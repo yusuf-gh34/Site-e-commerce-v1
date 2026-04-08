@@ -51,7 +51,7 @@ if($action == 'update' && $produit_id > 0) {
             exit();
         }
     }
-    header("Location: panier.php");
+    header("Location: panier.php?success=update");
     exit();
 }
 
@@ -88,7 +88,7 @@ if(isset($_GET['success'])) {
     if($_GET['success'] == 'supprime') {
         $message_success = 'Produit supprimé du panier';
     } elseif($_GET['success'] == 'vide') {
-        $message_success = 'Votre panier a été vidé';
+        $message_success = 'Panier vidé';
     } elseif($_GET['success'] == 'update') {
         $message_success = 'Quantité mise à jour';
     }
@@ -96,13 +96,13 @@ if(isset($_GET['success'])) {
 
 if(isset($_GET['error'])) {
     if($_GET['error'] == 'stock_insuffisant') {
-        $message_error = 'Stock insuffisant pour ce produit';
+        $message_error = 'Stock insuffisant';
     }
 }
 
-// Message pour inviter à la connexion si panier non vide et utilisateur non connecté
+// Message pour inviter à la connexion
 if(!$est_connecte && count($panier_items) > 0) {
-    $message_warning = 'Vous n\'êtes pas connecté. <a href="login_client.php?redirect=panier.php" style="color: #856404; font-weight: bold;">Connectez-vous</a> ou <a href="register.php?redirect=panier.php" style="color: #856404; font-weight: bold;">inscrivez-vous</a> pour finaliser votre commande. Votre panier sera sauvegardé.';
+    $message_warning = 'Connectez-vous pour finaliser votre commande. <a href="login_client.php?redirect=panier.php" style="color:#856404;">Se connecter</a>';
 }
 ?>
 
@@ -111,7 +111,7 @@ if(!$est_connecte && count($panier_items) > 0) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mon Panier - Boutique</title>
+    <title>Mon Panier - Ma Boutique</title>
     <style>
         * {
             margin: 0;
@@ -120,140 +120,152 @@ if(!$est_connecte && count($panier_items) > 0) {
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #fafafa;
+            color: #111;
         }
 
-        /* Header */
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        /* Toast */
+        .toast {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: #10b981;
             color: white;
-            padding: 20px 30px;
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-
-        .header-content {
-            max-width: 1400px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        .logo h1 {
-            font-size: 24px;
-        }
-
-        .logo p {
-            font-size: 12px;
-            opacity: 0.8;
-        }
-
-        .back-btn {
-            background: rgba(255,255,255,0.2);
-            padding: 10px 20px;
-            border-radius: 5px;
-            text-decoration: none;
-            color: white;
-            transition: background 0.3s;
-        }
-
-        .back-btn:hover {
-            background: rgba(255,255,255,0.3);
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            background: rgba(255,255,255,0.15);
-            padding: 8px 20px;
-            border-radius: 30px;
-        }
-
-        .login-link {
-            background: #28a745;
-            color: white;
-            padding: 8px 18px;
-            border-radius: 5px;
-            text-decoration: none;
+            padding: 12px 20px;
+            border-radius: 8px;
             font-size: 14px;
-        }
-
-        .login-link:hover {
-            background: #218838;
-        }
-
-        /* Main content */
-        .main-content {
-            max-width: 1200px;
-            margin: 40px auto;
-            padding: 0 20px;
-        }
-
-        .cart-container {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-
-        .cart-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px 25px;
-        }
-
-        .cart-header h2 {
-            font-size: 24px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        /* Messages */
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            padding: 15px 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            border-left: 4px solid #28a745;
+            z-index: 1000;
             animation: fadeOut 3s forwards;
-        }
-
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 15px 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            border-left: 4px solid #dc3545;
-        }
-
-        .alert-warning {
-            background: #fff3cd;
-            color: #856404;
-            padding: 15px 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            border-left: 4px solid #ffc107;
-        }
-
-        .alert-warning a {
-            color: #856404;
-            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
         @keyframes fadeOut {
             0% { opacity: 1; }
             70% { opacity: 1; }
-            100% { opacity: 0; visibility: hidden; display: none; }
+            100% { opacity: 0; visibility: hidden; }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        .header {
+            background: white;
+            border-bottom: 1px solid #eaeaea;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .logo a {
+            font-size: 24px;
+            font-weight: 700;
+            text-decoration: none;
+            color: #111;
+        }
+
+        .logo span {
+            color: #2563eb;
+        }
+
+        .back-btn {
+            text-decoration: none;
+            color: #444;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            background: #f0f0f0;
+            transition: all 0.2s;
+        }
+
+        .back-btn:hover {
+            background: #e0e0e0;
+            color: #2563eb;
+        }
+
+        .login-link {
+            background: #2563eb;
+            color: white;
+            padding: 8px 18px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .login-link:hover {
+            background: #1e40af;
+        }
+
+        /* Messages */
+        .alert-success {
+            background: #d1fae5;
+            color: #065f46;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 3px solid #10b981;
+            font-size: 14px;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 3px solid #ef4444;
+            font-size: 14px;
+        }
+
+        .alert-warning {
+            background: #fed7aa;
+            color: #92400e;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 3px solid #f59e0b;
+            font-size: 14px;
+        }
+
+        .alert-warning a {
+            color: #92400e;
+            font-weight: bold;
+        }
+
+        /* Cart container */
+        .cart-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border: 1px solid #eaeaea;
+            overflow: hidden;
+            margin: 30px 0;
+        }
+
+        .cart-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid #eaeaea;
+        }
+
+        .cart-header h2 {
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         /* Table */
@@ -265,27 +277,34 @@ if(!$est_connecte && count($panier_items) > 0) {
         .cart-table th {
             text-align: left;
             padding: 15px 20px;
-            background: #f8f9fa;
-            color: #333;
-            font-weight: 600;
-            border-bottom: 2px solid #e9ecef;
+            background: #fafafa;
+            color: #666;
+            font-weight: 500;
+            font-size: 13px;
+            border-bottom: 1px solid #eaeaea;
         }
 
         .cart-table td {
             padding: 20px;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid #eaeaea;
             vertical-align: middle;
         }
 
+        .product-cell {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
         .product-image {
-            width: 80px;
-            height: 80px;
-            background: #f0f0f0;
+            width: 60px;
+            height: 60px;
+            background: #f5f5f5;
             border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 32px;
+            font-size: 28px;
             overflow: hidden;
         }
 
@@ -296,24 +315,15 @@ if(!$est_connecte && count($panier_items) > 0) {
         }
 
         .product-name {
-            font-weight: 600;
-            color: #333;
-            font-size: 16px;
+            font-weight: 500;
+            color: #111;
+            font-size: 14px;
         }
 
         .product-price {
-            color: #667eea;
-            font-weight: bold;
-            font-size: 18px;
-        }
-
-        .quantity-input {
-            width: 70px;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            text-align: center;
-            font-size: 14px;
+            font-weight: 600;
+            color: #2563eb;
+            font-size: 16px;
         }
 
         .quantity-form {
@@ -322,47 +332,56 @@ if(!$est_connecte && count($panier_items) > 0) {
             align-items: center;
         }
 
-        .update-btn {
-            background: #28a745;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-
-        .update-btn:hover {
-            background: #218838;
-        }
-
-        .remove-btn {
-            background: #dc3545;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
+        .quantity-input {
+            width: 60px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            text-align: center;
             font-size: 14px;
         }
 
+        .update-btn {
+            background: #f0f0f0;
+            color: #444;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .update-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .remove-btn {
+            background: none;
+            color: #ef4444;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            text-decoration: none;
+            padding: 5px 10px;
+            transition: color 0.2s;
+        }
+
         .remove-btn:hover {
-            background: #c82333;
+            color: #dc2626;
         }
 
         .product-subtotal {
-            font-weight: bold;
-            font-size: 18px;
-            color: #333;
+            font-weight: 600;
+            font-size: 16px;
+            color: #111;
         }
 
         /* Cart summary */
         .cart-summary {
-            background: #f8f9fa;
-            padding: 25px;
-            border-top: 2px solid #e9ecef;
+            background: #fafafa;
+            padding: 20px 25px;
+            border-top: 1px solid #eaeaea;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -371,77 +390,69 @@ if(!$est_connecte && count($panier_items) > 0) {
         }
 
         .total-label {
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
+            font-size: 16px;
+            font-weight: 500;
+            color: #666;
         }
 
         .total-amount {
-            font-size: 32px;
-            font-weight: bold;
-            color: #667eea;
+            font-size: 28px;
+            font-weight: 700;
+            color: #2563eb;
+            margin-left: 10px;
         }
 
         .cart-actions {
             display: flex;
-            gap: 15px;
+            gap: 12px;
         }
 
         .btn-empty {
-            background: #6c757d;
-            color: white;
-            padding: 12px 25px;
+            background: #f0f0f0;
+            color: #666;
+            padding: 10px 20px;
             border-radius: 8px;
             text-decoration: none;
+            font-size: 14px;
             font-weight: 500;
-            transition: transform 0.2s;
+            transition: all 0.2s;
             border: none;
             cursor: pointer;
         }
 
         .btn-empty:hover {
-            background: #5a6268;
-            transform: translateY(-2px);
-        }
-
-        .btn-checkout {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px 30px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: bold;
-            transition: transform 0.2s;
-            display: inline-block;
-        }
-
-        .btn-checkout:hover {
-            transform: translateY(-2px);
-        }
-
-        .btn-checkout-disabled {
-            background: #ccc;
-            color: #666;
-            padding: 12px 30px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: bold;
-            cursor: not-allowed;
-            display: inline-block;
+            background: #e0e0e0;
         }
 
         .btn-continue {
-            background: #28a745;
-            color: white;
-            padding: 12px 25px;
+            background: #f0f0f0;
+            color: #444;
+            padding: 10px 20px;
             border-radius: 8px;
             text-decoration: none;
+            font-size: 14px;
             font-weight: 500;
-            display: inline-block;
+            transition: all 0.2s;
         }
 
         .btn-continue:hover {
-            background: #218838;
+            background: #e0e0e0;
+        }
+
+        .btn-checkout {
+            background: #2563eb;
+            color: white;
+            padding: 10px 25px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-checkout:hover {
+            background: #1e40af;
+            transform: translateY(-1px);
         }
 
         /* Empty cart */
@@ -451,38 +462,45 @@ if(!$est_connecte && count($panier_items) > 0) {
         }
 
         .empty-cart-icon {
-            font-size: 80px;
+            font-size: 64px;
             margin-bottom: 20px;
+            opacity: 0.5;
         }
 
         .empty-cart h3 {
-            font-size: 24px;
-            color: #333;
-            margin-bottom: 15px;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 10px;
         }
 
         .empty-cart p {
             color: #666;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
+            font-size: 14px;
         }
 
         .btn-shop {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #2563eb;
             color: white;
-            padding: 12px 30px;
+            padding: 10px 25px;
             border-radius: 8px;
             text-decoration: none;
-            font-weight: bold;
+            font-weight: 500;
             display: inline-block;
+        }
+
+        .btn-shop:hover {
+            background: #1e40af;
         }
 
         /* Footer */
         .footer {
-            background: #333;
-            color: white;
             text-align: center;
             padding: 30px;
-            margin-top: 50px;
+            color: #666;
+            font-size: 13px;
+            border-top: 1px solid #eaeaea;
+            margin-top: 40px;
         }
 
         @media (max-width: 768px) {
@@ -490,10 +508,14 @@ if(!$est_connecte && count($panier_items) > 0) {
                 padding: 12px;
             }
             
+            .product-cell {
+                flex-direction: column;
+                text-align: center;
+            }
+            
             .product-image {
                 width: 50px;
                 height: 50px;
-                font-size: 24px;
             }
             
             .cart-summary {
@@ -515,23 +537,24 @@ if(!$est_connecte && count($panier_items) > 0) {
 </head>
 <body>
     <div class="header">
-        <div class="header-content">
-            <div class="logo">
-                <h1>Ma Boutique</h1>
-                <p>Qualité et satisfaction garanties</p>
-            </div>
-            <div style="display: flex; gap: 15px; align-items: center;">
-                <a href="index.php" class="back-btn">← Continuer mes achats</a>
-                <?php if(!$est_connecte): ?>
-                    <a href="login_client.php?redirect=panier.php" class="login-link">🔐 Se connecter</a>
-                <?php endif; ?>
+        <div class="container">
+            <div class="header-inner">
+                <div class="logo">
+                    <a href="index.php">Ma<span>Boutique</span></a>
+                </div>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <a href="index.php" class="back-btn">← Continuer</a>
+                    <?php if(!$est_connecte && count($panier_items) > 0): ?>
+                        <a href="login_client.php?redirect=panier.php" class="login-link">🔐 Connexion</a>
+                    <?php endif; ?>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="main-content">
+    <div class="container">
         <?php if($message_success): ?>
-            <div class="alert-success">✅ <?php echo htmlspecialchars($message_success); ?></div>
+            <div class="toast">✅ <?php echo htmlspecialchars($message_success); ?></div>
         <?php endif; ?>
         
         <?php if($message_error): ?>
@@ -544,7 +567,7 @@ if(!$est_connecte && count($panier_items) > 0) {
 
         <div class="cart-container">
             <div class="cart-header">
-                <h2>🛒 Mon Panier</h2>
+                <h2>🛒 Mon panier</h2>
             </div>
 
             <?php if(count($panier_items) > 0): ?>
@@ -552,17 +575,17 @@ if(!$est_connecte && count($panier_items) > 0) {
                     <thead>
                         <tr>
                             <th>Produit</th>
-                            <th>Prix unitaire</th>
+                            <th>Prix</th>
                             <th>Quantité</th>
                             <th>Total</th>
-                            <th>Action</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach($panier_items as $item): ?>
                             <tr>
                                 <td>
-                                    <div style="display: flex; align-items: center; gap: 15px;">
+                                    <div class="product-cell">
                                         <div class="product-image">
                                             <?php if(!empty($item['image']) && file_exists('uploads/products/' . $item['image'])): ?>
                                                 <img src="uploads/products/<?php echo $item['image']; ?>" alt="<?php echo htmlspecialchars($item['nom']); ?>">
@@ -582,7 +605,7 @@ if(!$est_connecte && count($panier_items) > 0) {
                                 </td>
                                 <td class="product-subtotal"><?php echo number_format($item['sous_total'], 0, ',', ' '); ?> DH</td>
                                 <td>
-                                    <a href="panier.php?action=supprimer&id=<?php echo $item['id']; ?>" class="remove-btn" onclick="return confirm('Supprimer ce produit ?')">Supprimer</a>
+                                    <a href="panier.php?action=supprimer&id=<?php echo $item['id']; ?>" class="remove-btn" onclick="return confirm('Supprimer ?')">🗑️</a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -591,32 +614,45 @@ if(!$est_connecte && count($panier_items) > 0) {
 
                 <div class="cart-summary">
                     <div>
-                        <span class="total-label">Total TTC :</span>
+                        <span class="total-label">Total</span>
                         <span class="total-amount"><?php echo number_format($total, 0, ',', ' '); ?> DH</span>
                     </div>
                     <div class="cart-actions">
-                        <a href="panier.php?action=vider" class="btn-empty" onclick="return confirm('Vider tout le panier ?')">🗑️ Vider le panier</a>
-                        <a href="index.php" class="btn-continue">🛍️ Continuer mes achats</a>
+                        <a href="panier.php?action=vider" class="btn-empty" onclick="return confirm('Vider le panier ?')">Vider</a>
+                        <a href="index.php" class="btn-continue">Continuer</a>
                         <?php if($est_connecte): ?>
-                            <a href="commande.php" class="btn-checkout">📦 Passer la commande →</a>
+                            <a href="commande.php" class="btn-checkout">Commander →</a>
                         <?php else: ?>
-                            <a href="login_client.php?redirect=panier.php" class="btn-checkout" style="background: #ffc107; color: #333;">🔐 Connectez-vous pour commander</a>
+                            <a href="login_client.php?redirect=panier.php" class="btn-checkout" style="background:#f59e0b;">Connexion</a>
                         <?php endif; ?>
                     </div>
                 </div>
             <?php else: ?>
                 <div class="empty-cart">
                     <div class="empty-cart-icon">🛒</div>
-                    <h3>Votre panier est vide</h3>
-                    <p>Découvrez nos produits et ajoutez-les à votre panier</p>
-                    <a href="index.php" class="btn-shop">Découvrir nos produits</a>
+                    <h3>Panier vide</h3>
+                    <p>Ajoutez des produits depuis notre boutique</p>
+                    <a href="index.php" class="btn-shop">Voir les produits</a>
                 </div>
             <?php endif; ?>
         </div>
     </div>
 
     <div class="footer">
-        <p>&copy; <?php echo date('Y'); ?> Ma Boutique - Tous droits réservés</p>
+        <p>&copy; <?php echo date('Y'); ?> Ma Boutique</p>
     </div>
+
+    <script>
+        // Animation du toast
+        setTimeout(() => {
+            const toast = document.querySelector('.toast');
+            if(toast) {
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    setTimeout(() => toast.remove(), 300);
+                }, 2500);
+            }
+        }, 100);
+    </script>
 </body>
 </html>

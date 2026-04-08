@@ -203,7 +203,7 @@ $produits = $db->query("
     ORDER BY p.id_produit DESC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
-$categories = $db->query("SELECT * FROM Categorie")->fetchAll(PDO::FETCH_ASSOC);
+$categories = $db->query("SELECT * FROM Categorie ORDER BY nom")->fetchAll(PDO::FETCH_ASSOC);
 
 $commandes = $db->query("
     SELECT c.*, u.nom as client_nom, u.telephone as client_telephone, s.nom as status_nom 
@@ -224,7 +224,7 @@ foreach($commandes as $key => $commande) {
     $commandes[$key]['produits'] = $details->fetchAll(PDO::FETCH_ASSOC);
 }
 
-$status_list = $db->query("SELECT * FROM Status")->fetchAll(PDO::FETCH_ASSOC);
+$status_list = $db->query("SELECT * FROM Status ORDER BY id_status")->fetchAll(PDO::FETCH_ASSOC);
 $all_products = $db->query("SELECT id_produit, nom, prix, stock FROM Produit ORDER BY nom")->fetchAll(PDO::FETCH_ASSOC);
 
 // Statistiques
@@ -233,9 +233,15 @@ $query = "SELECT COUNT(*) as total FROM Produit";
 $stmt = $db->query($query);
 $stats['total_products'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
-$query = "SELECT COUNT(*) as total FROM Commande";
+// MODIFICATION: Compte uniquement les commandes NON LIVRÉES (id_status != 5)
+$query = "SELECT COUNT(*) as total FROM Commande WHERE id_status != 5";
 $stmt = $db->query($query);
 $stats['total_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+// MODIFICATION: Commandes totales (toutes) pour information
+$query = "SELECT COUNT(*) as total FROM Commande";
+$stmt = $db->query($query);
+$stats['all_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
 $query = "SELECT COUNT(*) as total FROM Commande WHERE id_status = 1";
 $stmt = $db->query($query);
@@ -251,337 +257,420 @@ $stats['confirmed_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Gestionnaire</title>
+    <title>Dashboard Gestionnaire - Ma Boutique</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f5f5;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        
-        .navbar {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f5f5;
+            color: #111;
+        }
+
+        /* Toast / Alert */
+        .toast {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: #10b981;
             color: white;
-            padding: 15px 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            animation: fadeOut 3s forwards;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .alert-error {
+            background: #ef4444;
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            70% { opacity: 1; }
+            100% { opacity: 0; visibility: hidden; }
+        }
+
+        /* Header */
+        .header {
+            background: white;
+            border-bottom: 1px solid #eaeaea;
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            z-index: 1000;
+            z-index: 100;
         }
-        
-        .navbar h1 { font-size: 24px; }
-        
-        .user-info { display: flex; align-items: center; gap: 20px; }
-        
-        .logout-btn {
-            background: rgba(255,255,255,0.2);
-            color: white;
-            padding: 8px 15px;
-            border-radius: 5px;
+
+        .header-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 24px;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .logo a {
+            font-size: 24px;
+            font-weight: 700;
             text-decoration: none;
-            transition: background 0.3s;
+            color: #111;
         }
-        
-        .logout-btn:hover { background: rgba(255,255,255,0.3); }
-        
+
+        .logo span {
+            color: #11998e;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-name {
+            font-weight: 500;
+            color: #444;
+        }
+
+        .logout-btn {
+            background: #11998e;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: #0d7a6e;
+        }
+
+        /* Sidebar */
         .sidebar {
             position: fixed;
             left: 0;
             top: 70px;
-            width: 250px;
+            width: 260px;
             height: calc(100% - 70px);
             background: white;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            border-right: 1px solid #eaeaea;
             overflow-y: auto;
+            z-index: 99;
         }
-        
+
         .sidebar-menu {
             list-style: none;
             padding: 20px 0;
         }
-        
+
         .sidebar-menu li {
-            margin-bottom: 5px;
+            margin-bottom: 4px;
         }
-        
+
         .sidebar-menu li a {
             display: block;
-            padding: 12px 25px;
-            color: #333;
+            padding: 12px 24px;
+            color: #444;
             text-decoration: none;
-            transition: all 0.3s;
+            font-size: 14px;
             font-weight: 500;
+            transition: all 0.2s;
         }
-        
+
         .sidebar-menu li a:hover {
             background: #f0f0f0;
-            padding-left: 30px;
+            color: #11998e;
         }
-        
+
         .sidebar-menu li.active a {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            background: #11998e;
             color: white;
         }
-        
+
+        /* Main content */
         .main-content {
-            margin-left: 250px;
+            margin-left: 260px;
             margin-top: 70px;
             padding: 30px;
+            min-height: calc(100vh - 70px);
         }
-        
+
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
         }
-        
+
+        /* Stats grid */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 20px;
             margin-bottom: 30px;
         }
-        
+
         .stat-card {
             background: white;
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            border: 1px solid #eaeaea;
             text-align: center;
-            transition: transform 0.3s;
+            transition: transform 0.2s;
         }
-        
-        .stat-card:hover { transform: translateY(-5px); }
-        
-        .stat-card h3 { color: #666; font-size: 14px; margin-bottom: 10px; }
-        
-        .stat-number { font-size: 32px; font-weight: bold; color: #11998e; }
-        
-        .content-card {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .content-card h2 {
-            margin-bottom: 20px;
-            color: #333;
-            border-bottom: 2px solid #f0f0f0;
-            padding-bottom: 10px;
-        }
-        
-        .btn {
-            display: inline-block;
-            padding: 8px 15px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            text-decoration: none;
-            transition: all 0.3s;
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-            color: white;
-        }
-        
-        .btn-primary:hover {
+
+        .stat-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(17,153,142,0.4);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }
-        
-        .btn-warning {
-            background: #ffc107;
-            color: #333;
+
+        .stat-card h3 {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 8px;
         }
-        
-        .btn-danger {
-            background: #dc3545;
-            color: white;
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #11998e;
         }
-        
-        .btn-info {
-            background: #17a2b8;
-            color: white;
+
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid #eaeaea;
+            margin-bottom: 30px;
+            overflow: hidden;
         }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
+
+        .card-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #eaeaea;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
         }
-        
-        .btn-sm {
-            padding: 5px 10px;
-            font-size: 12px;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #e9ecef;
-        }
-        
-        th {
-            background: #f8f9fa;
+
+        .card-header h2 {
+            font-size: 18px;
             font-weight: 600;
-            color: #495057;
+            color: #111;
         }
-        
-        tr:hover {
-            background: #f8f9fa;
+
+        .card-body {
+            padding: 20px 24px;
         }
-        
+
+        /* Form styles */
         .form-group {
             margin-bottom: 15px;
         }
-        
+
         .form-group label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
+            font-size: 13px;
             font-weight: 500;
-            color: #333;
+            color: #444;
         }
-        
-        .form-group input, .form-group select, .form-group textarea {
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
             width: 100%;
-            padding: 10px;
+            padding: 10px 12px;
             border: 1px solid #ddd;
-            border-radius: 5px;
+            border-radius: 8px;
             font-size: 14px;
+            font-family: inherit;
         }
-        
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #11998e;
+        }
+
         .form-group input[readonly] {
             background: #f5f5f5;
             cursor: not-allowed;
         }
-        
-        .form-group input[type="file"] {
-            padding: 5px;
-        }
-        
-        .alert {
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 2000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-        }
-        
-        .modal-content {
-            background: white;
-            margin: 3% auto;
-            padding: 30px;
-            border-radius: 10px;
-            width: 90%;
-            max-width: 800px;
-            max-height: 85%;
-            overflow-y: auto;
-        }
-        
-        .close {
-            float: right;
-            font-size: 28px;
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
             cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s;
         }
-        
-        .badge {
-            padding: 5px 10px;
-            border-radius: 5px;
+
+        .btn-primary {
+            background: #11998e;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0d7a6e;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
             font-size: 12px;
-            font-weight: 600;
         }
-        
-        .badge-warning { background: #ffc107; color: #333; }
-        .badge-info { background: #17a2b8; color: white; }
-        .badge-success { background: #28a745; color: white; }
-        .badge-danger { background: #dc3545; color: white; }
-        
+
+        /* Table styles */
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eaeaea;
+        }
+
+        th {
+            background: #f9fafb;
+            font-weight: 600;
+            font-size: 13px;
+            color: #444;
+        }
+
+        tr:hover {
+            background: #f9fafb;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-warning {
+            background: #fed7aa;
+            color: #92400e;
+        }
+
+        .badge-danger {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        /* Product image */
         .product-image {
             width: 50px;
             height: 50px;
             object-fit: cover;
-            border-radius: 5px;
+            border-radius: 8px;
+            background: #f3f4f6;
         }
-        
+
         .current-image {
-            max-width: 100px;
-            max-height: 100px;
+            max-width: 80px;
+            max-height: 80px;
+            border-radius: 8px;
             margin-top: 10px;
-            border-radius: 5px;
         }
-        
+
+        /* Action buttons */
         .action-buttons {
             display: flex;
-            gap: 5px;
+            gap: 8px;
             flex-wrap: wrap;
         }
-        
-        .stock-warning {
-            color: #dc3545;
-            font-weight: bold;
-        }
-        
-        .price-display {
-            color: #11998e;
-            font-weight: bold;
-        }
-        
-        .info-note {
-            background: #e7f3ff;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            font-size: 13px;
-            color: #0066cc;
-        }
-        
+
         .phone-link {
             color: #11998e;
             text-decoration: none;
-            font-weight: 500;
         }
-        
+
         .phone-link:hover {
             text-decoration: underline;
         }
-        
-        /* Styles pour la modification de commande */
+
+        .stock-warning {
+            color: #f59e0b;
+            font-weight: 500;
+        }
+
+        .price-display {
+            color: #11998e;
+            font-weight: 600;
+        }
+
+        .info-note {
+            background: #e7f3ff;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #0066cc;
+        }
+
+        /* Order product item */
         .order-product-item {
-            background: #f8f9fa;
+            background: #f9fafb;
             padding: 12px;
             margin-bottom: 10px;
             border-radius: 8px;
@@ -591,408 +680,518 @@ $stats['confirmed_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
             flex-wrap: wrap;
             gap: 10px;
         }
-        
-        .order-product-info {
-            flex: 2;
-        }
-        
+
         .order-product-actions {
             display: flex;
             gap: 10px;
             align-items: center;
             flex-wrap: wrap;
         }
-        
+
         .order-product-actions input {
             width: 70px;
-            padding: 5px;
-            border-radius: 5px;
+            padding: 6px;
+            border-radius: 6px;
             border: 1px solid #ddd;
             text-align: center;
         }
-        
+
         .btn-icon {
             background: none;
             border: none;
             cursor: pointer;
             font-size: 18px;
             padding: 5px;
+            color: #ef4444;
         }
-        
-        .btn-icon.delete { color: #dc3545; }
-        .btn-icon.delete:hover { opacity: 0.7; }
-        
+
         .add-product-section {
-            background: #f8f9fa;
+            background: #f9fafb;
             padding: 15px;
             border-radius: 8px;
             margin: 15px 0;
         }
-        
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background: white;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 85%;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #eaeaea;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+        }
+
+        .close {
+            font-size: 28px;
+            cursor: pointer;
+            color: #888;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 13px;
+            border-top: 1px solid #eaeaea;
+            margin-top: 20px;
+        }
+
         @media (max-width: 768px) {
             .sidebar {
                 display: none;
             }
+            
             .main-content {
                 margin-left: 0;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .card-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            th, td {
+                font-size: 12px;
+                padding: 8px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="navbar">
-        <h1>📊 Dashboard Gestionnaire</h1>
-        <div class="user-info">
-            <span>👋 Bonjour, <?php echo htmlspecialchars($_SESSION['manager_nom']); ?></span>
-            <a href="logout.php" class="logout-btn">Déconnexion</a>
+    <?php if($success_message): ?>
+        <div class="toast"><?php echo $success_message; ?></div>
+    <?php endif; ?>
+    
+    <?php if($error_message): ?>
+        <div class="toast alert-error"><?php echo $error_message; ?></div>
+    <?php endif; ?>
+
+    <div class="header">
+        <div class="header-inner">
+            <div class="logo">
+                <a href="gestionnaire_dashboard.php">Ma<span>Boutique</span> <span style="font-size: 14px; color:#666;">Gestionnaire</span></a>
+            </div>
+            <div class="user-info">
+                <span class="user-name">👋 <?php echo htmlspecialchars($_SESSION['manager_nom']); ?></span>
+                <a href="logout.php" class="logout-btn">Déconnexion</a>
+            </div>
         </div>
     </div>
-    
+
     <div class="sidebar">
         <ul class="sidebar-menu">
             <li class="<?php echo $action == 'dashboard' ? 'active' : ''; ?>">
                 <a href="?action=dashboard">📊 Tableau de bord</a>
             </li>
             <li class="<?php echo $action == 'products' ? 'active' : ''; ?>">
-                <a href="?action=products">🛍️ Gestion des produits</a>
+                <a href="?action=products">🛍️ Produits</a>
             </li>
             <li class="<?php echo $action == 'orders' ? 'active' : ''; ?>">
-                <a href="?action=orders">📦 Gestion des commandes</a>
+                <a href="?action=orders">📦 Commandes</a>
             </li>
         </ul>
     </div>
-    
+
     <div class="main-content">
         <div class="container">
-            <?php if($success_message): ?>
-                <div class="alert alert-success"><?php echo $success_message; ?></div>
-            <?php endif; ?>
-            
-            <?php if($error_message): ?>
-                <div class="alert alert-error"><?php echo $error_message; ?></div>
-            <?php endif; ?>
             
             <!-- DASHBOARD -->
             <?php if($action == 'dashboard'): ?>
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <h3>🛍️ Total produits</h3>
+                        <h3>🛍️ Produits</h3>
                         <div class="stat-number"><?php echo $stats['total_products']; ?></div>
                     </div>
                     <div class="stat-card">
-                        <h3>📦 Total commandes</h3>
+                        <h3>📦 Commandes</h3>
                         <div class="stat-number"><?php echo $stats['total_orders']; ?></div>
                     </div>
                     <div class="stat-card">
-                        <h3>⏳ Commandes en attente</h3>
+                        <h3>⏳ En attente</h3>
                         <div class="stat-number"><?php echo $stats['pending_orders']; ?></div>
                     </div>
                     <div class="stat-card">
-                        <h3>✅ Commandes confirmées</h3>
+                        <h3>✅ Confirmées</h3>
                         <div class="stat-number"><?php echo $stats['confirmed_orders']; ?></div>
                     </div>
                 </div>
-                
-                <div class="content-card">
-                    <h2>📋 Dernières commandes</h2>
-                    <?php if(count($commandes) == 0): ?>
-                        <p style="text-align: center; color: #666; padding: 40px;">Aucune commande pour le moment.</p>
-                    <?php else: ?>
-                        <table>
-                            <thead>
-                                <tr><th>ID</th><th>Client</th><th>Téléphone</th><th>Total</th><th>Statut</th><th>Date</th></tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach(array_slice($commandes, 0, 5) as $commande): ?>
-                                <tr>
-                                    <td>#<?php echo $commande['id_commande']; ?></td>
-                                    <td><?php echo htmlspecialchars($commande['client_nom']); ?></td>
-                                    <td>
-                                        <?php if($commande['client_telephone']): ?>
-                                            <a href="tel:<?php echo $commande['client_telephone']; ?>" class="phone-link">
-                                                📞 <?php echo htmlspecialchars($commande['client_telephone']); ?>
-                                            </a>
-                                        <?php else: ?>
-                                            <span style="color: #999;">Non renseigné</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?php echo number_format($commande['prix_totale'], 0, ',', ' '); ?> DH</td>
-                                    <td><span class="badge badge-<?php echo $commande['id_status'] <= 2 ? 'warning' : ($commande['id_status'] == 5 ? 'success' : 'info'); ?>"><?php echo $commande['status_nom']; ?></span></td>
-                                    <td><?php echo date('d/m/Y H:i', strtotime($commande['date_commande'])); ?></td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    <?php endif; ?>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📋 Dernières commandes</h2>
+                        <a href="?action=orders" class="btn btn-secondary btn-sm">Voir toutes</a>
+                    </div>
+                    <div class="card-body">
+                        <?php if(count($commandes) == 0): ?>
+                            <p style="text-align: center; color: #666; padding: 40px;">Aucune commande pour le moment.</p>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Client</th>
+                                            <th>Total</th>
+                                            <th>Statut</th>
+                                            <th>Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach(array_slice($commandes, 0, 5) as $commande): ?>
+                                            <tr>
+                                                <td>#<?php echo $commande['id_commande']; ?></td>
+                                                <td><?php echo htmlspecialchars($commande['client_nom']); ?></td>
+                                                <td><?php echo number_format($commande['prix_totale'], 0, ',', ' '); ?> DH</                                                <td>
+                                                    <span class="badge badge-<?php echo $commande['id_status'] <= 2 ? 'warning' : ($commande['id_status'] == 5 ? 'success' : 'info'); ?>">
+                                                        <?php echo $commande['status_nom']; ?>
+                                                    </span>
+                                                </td>
+                                                <td><?php echo date('d/m/Y H:i', strtotime($commande['date_commande'])); ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
             <?php endif; ?>
-            
+
             <!-- GESTION DES PRODUITS -->
             <?php if($action == 'products'): ?>
-                <div class="content-card">
-                    <h2>🛍️ Liste des produits</h2>
-                   
-                    
-                    <?php if(count($produits) == 0): ?>
-                        <p style="text-align: center; color: #666; padding: 40px;">Aucun produit disponible.</p>
-                    <?php else: ?>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Image</th>
-                                    <th>Nom</th>
-                                    <th>Catégorie</th>
-                                    <th>Prix</th>
-                                    <th>Stock</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach($produits as $produit): ?>
-                                <tr>
-                                    <td><?php echo $produit['id_produit']; ?></td>
-                                    <td>
-                                        <?php if($produit['image'] && file_exists('../uploads/products/' . $produit['image'])): ?>
-                                            <img src="../uploads/products/<?php echo $produit['image']; ?>" class="product-image">
-                                        <?php else: ?>
-                                            <span style="color: #999;">📷 Aucune</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($produit['nom']); ?></td>
-                                    <td><?php echo $produit['categorie_nom']; ?></td>
-                                    <td class="price-display"><?php echo number_format($produit['prix'], 0, ',', ' '); ?> DH</td>
-                                    <td class="<?php echo $produit['stock'] <= 5 ? 'stock-warning' : ''; ?>">
-                                        <?php echo $produit['stock']; ?>
-                                        <?php if($produit['stock'] <= 5): ?> ⚠️<?php endif; ?>
-                                    </td>
-                                    <td class="action-buttons">
-                                        <button onclick='editProduct(<?php echo json_encode($produit); ?>)' class="btn btn-warning btn-sm">✏️ Modifier</button>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    <?php endif; ?>
+                <div class="card">
+                    <div class="card-header">
+                        <h2>🛍️ Produits (<?php echo count($produits); ?>)</h2>
+                    </div>
+                    <div class="card-body">
+                        
+                        
+                        <?php if(count($produits) == 0): ?>
+                            <p style="text-align: center; color: #666; padding: 40px;">Aucun produit disponible.</p>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Image</th>
+                                            <th>Nom</th>
+                                            <th>Catégorie</th>
+                                            <th>Prix</th>
+                                            <th>Stock</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach($produits as $produit): ?>
+                                            <tr>
+                                                <td><?php echo $produit['id_produit']; ?></td>
+                                                <td>
+                                                    <?php if($produit['image'] && file_exists('../uploads/products/' . $produit['image'])): ?>
+                                                        <img src="../uploads/products/<?php echo $produit['image']; ?>" class="product-image">
+                                                    <?php else: ?>
+                                                        <span style="color:#999;">📷</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td><?php echo htmlspecialchars($produit['nom']); ?></td>
+                                                <td><?php echo $produit['categorie_nom']; ?></td>
+                                                <td class="price-display"><?php echo number_format($produit['prix'], 0, ',', ' '); ?> DH</td>
+                                                <td class="<?php echo $produit['stock'] <= 5 ? 'stock-warning' : ''; ?>">
+                                                    <?php echo $produit['stock']; ?>
+                                                    <?php if($produit['stock'] <= 5): ?> ⚠️<?php endif; ?>
+                                                </td>
+                                                <td class="action-buttons">
+                                                    <button onclick='editProduct(<?php echo json_encode($produit); ?>)' class="btn btn-warning btn-sm">✏️ Modifier</button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
             <?php endif; ?>
-            
+
             <!-- GESTION DES COMMANDES -->
             <?php if($action == 'orders'): ?>
-                <div class="content-card">
-                    <h2>📦 Toutes les commandes</h2>
-                    <?php if(count($commandes) == 0): ?>
-                        <p style="text-align: center; color: #666; padding: 40px;">Aucune commande pour le moment.</p>
-                    <?php else: ?>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Client</th>
-                                    <th>Téléphone</th>
-                                    <th>Adresse livraison</th>
-                                    <th>Total</th>
-                                    <th>Statut</th>
-                                    <th>Date</th>
-                                    <th>Produits</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach($commandes as $commande): ?>
-                                <tr>
-                                    <td>#<?php echo $commande['id_commande']; ?></td>
-                                    <td><?php echo htmlspecialchars($commande['client_nom']); ?></td>
-                                    <td>
-                                        <?php if($commande['client_telephone']): ?>
-                                            <a href="tel:<?php echo $commande['client_telephone']; ?>" class="phone-link">
-                                                📞 <?php echo htmlspecialchars($commande['client_telephone']); ?>
-                                            </a>
-                                        <?php else: ?>
-                                            <span style="color: #999;">Non renseigné</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($commande['adresse_livraison'] ?? 'Non spécifiée'); ?></td>
-                                    <td><?php echo number_format($commande['prix_totale'], 0, ',', ' '); ?> DH</td>
-                                    <td>
-                                        <span class="badge badge-<?php echo $commande['id_status'] <= 2 ? 'warning' : ($commande['id_status'] == 5 ? 'success' : 'info'); ?>">
-                                            <?php echo $commande['status_nom']; ?>
-                                        </span>
-                                    </td>
-                                    <td><?php echo date('d/m/Y H:i', strtotime($commande['date_commande'])); ?></td>
-                                    <td>
-                                        <?php foreach($commande['produits'] as $produit): ?>
-                                            <div>• <?php echo htmlspecialchars($produit['produit_nom']); ?> (x<?php echo $produit['quantite']; ?>)</div>
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📦 Commandes (<?php echo count($commandes); ?>)</h2>
+                    </div>
+                    <div class="card-body">
+                        <?php if(count($commandes) == 0): ?>
+                            <p style="text-align: center; color: #666; padding: 40px;">Aucune commande pour le moment.</p>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Client</th>
+                                            <th>Téléphone</th>
+                                            <th>Adresse</th>
+                                            <th>Total</th>
+                                            <th>Statut</th>
+                                            <th>Date</th>
+                                            <th>Produits</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach($commandes as $commande): ?>
+                                            <tr>
+                                                <td>#<?php echo $commande['id_commande']; ?></td>
+                                                <td><?php echo htmlspecialchars($commande['client_nom']); ?></td>
+                                                <td>
+                                                    <?php if($commande['client_telephone']): ?>
+                                                        <a href="tel:<?php echo $commande['client_telephone']; ?>" class="phone-link">
+                                                            📞 <?php echo htmlspecialchars($commande['client_telephone']); ?>
+                                                        </a>
+                                                    <?php else: ?>
+                                                        <span style="color:#999;">-</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td><?php echo htmlspecialchars(substr($commande['adresse_livraison'] ?? 'Non spécifiée', 0, 30)); ?>...</td>
+                                                <td><?php echo number_format($commande['prix_totale'], 0, ',', ' '); ?> DH</td>
+                                                <td>
+                                                    <span class="badge badge-<?php echo $commande['id_status'] <= 2 ? 'warning' : ($commande['id_status'] == 5 ? 'success' : 'info'); ?>">
+                                                        <?php echo $commande['status_nom']; ?>
+                                                    </span>
+                                                </td>
+                                                <td><?php echo date('d/m/Y H:i', strtotime($commande['date_commande'])); ?></td>
+                                                <td>
+                                                    <?php 
+                                                    $product_count = count($commande['produits']);
+                                                    if($product_count <= 2):
+                                                        foreach($commande['produits'] as $produit): ?>
+                                                            <div>• <?php echo htmlspecialchars($produit['produit_nom']); ?> (x<?php echo $produit['quantite']; ?>)</div>
+                                                        <?php endforeach;
+                                                    else: ?>
+                                                        <div>• <?php echo htmlspecialchars($commande['produits'][0]['produit_nom']); ?> (x<?php echo $commande['produits'][0]['quantite']; ?>)</div>
+                                                        <div style="color:#888;">+<?php echo ($product_count - 1); ?> autre(s)</div>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="action-buttons">
+                                                    <button onclick='editOrder(
+                                                        <?php echo $commande['id_commande']; ?>,
+                                                        "<?php echo addslashes($commande['client_nom']); ?>",
+                                                        "<?php echo addslashes($commande['client_telephone']); ?>",
+                                                        <?php echo $commande['id_status']; ?>,
+                                                        "<?php echo addslashes($commande['adresse_livraison'] ?? ''); ?>",
+                                                        <?php 
+                                                            $products_json = [];
+                                                            foreach($commande['produits'] as $p) {
+                                                                $stock_check = $db->prepare("SELECT stock FROM Produit WHERE id_produit = :id");
+                                                                $stock_check->execute([':id' => $p['id_produit']]);
+                                                                $current_stock = $stock_check->fetchColumn();
+                                                                $products_json[] = [
+                                                                    'id_produit' => $p['id_produit'],
+                                                                    'nom' => $p['produit_nom'],
+                                                                    'prix' => $p['prix'],
+                                                                    'quantite' => $p['quantite'],
+                                                                    'stock_disponible' => $current_stock
+                                                                ];
+                                                            }
+                                                            echo json_encode($products_json);
+                                                        ?>
+                                                    )' class="btn btn-warning btn-sm">✏️</button>
+                                                    
+                                                    <form method="POST" style="display: inline-block;">
+                                                        <input type="hidden" name="id_commande" value="<?php echo $commande['id_commande']; ?>">
+                                                        <select name="id_status" onchange="this.form.submit()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #ddd;">
+                                                            <?php foreach($status_list as $status): ?>
+                                                                <option value="<?php echo $status['id_status']; ?>" <?php echo $status['id_status'] == $commande['id_status'] ? 'selected' : ''; ?>>
+                                                                    <?php echo $status['nom']; ?>
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                        <input type="hidden" name="update_order_status">
+                                                    </form>
+                                                </td>
+                                            </tr>
                                         <?php endforeach; ?>
-                                    </td>
-                                    <td class="action-buttons">
-                                        <button onclick='editOrder(
-                                            <?php echo $commande['id_commande']; ?>,
-                                            "<?php echo addslashes($commande['client_nom']); ?>",
-                                            "<?php echo addslashes($commande['client_telephone']); ?>",
-                                            <?php echo $commande['id_status']; ?>,
-                                            "<?php echo addslashes($commande['adresse_livraison'] ?? ''); ?>",
-                                            <?php 
-                                                $products_json = [];
-                                                foreach($commande['produits'] as $p) {
-                                                    $stock_check = $db->prepare("SELECT stock FROM Produit WHERE id_produit = :id");
-                                                    $stock_check->execute([':id' => $p['id_produit']]);
-                                                    $current_stock = $stock_check->fetchColumn();
-                                                    $products_json[] = [
-                                                        'id_produit' => $p['id_produit'],
-                                                        'nom' => $p['produit_nom'],
-                                                        'prix' => $p['prix'],
-                                                        'quantite' => $p['quantite'],
-                                                        'stock_disponible' => $current_stock
-                                                    ];
-                                                }
-                                                echo json_encode($products_json);
-                                            ?>
-                                        )' class="btn btn-warning btn-sm">✏️ Modifier</button>
-                                        
-                                        <form method="POST" style="display: inline-block;">
-                                            <input type="hidden" name="id_commande" value="<?php echo $commande['id_commande']; ?>">
-                                            <select name="id_status" onchange="this.form.submit()" style="padding: 5px; border-radius: 5px;">
-                                                <?php foreach($status_list as $status): ?>
-                                                    <option value="<?php echo $status['id_status']; ?>" <?php echo $status['id_status'] == $commande['id_status'] ? 'selected' : ''; ?>>
-                                                        <?php echo $status['nom']; ?>
-                                                    </option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                            <input type="hidden" name="update_order_status">
-                                        </form>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
             <?php endif; ?>
         </div>
+        
+        <div class="footer">
+            <p>&copy; <?php echo date('Y'); ?> Ma Boutique - Espace Gestionnaire</p>
+        </div>
     </div>
-    
+
     <!-- MODAL POUR MODIFIER UN PRODUIT -->
     <div id="editModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="document.getElementById('editModal').style.display='none'">&times;</span>
-            <h2>✏️ Modifier le produit</h2>
-            <div class="info-note">
-                ⚠️ Le prix ne peut pas être modifié. Contactez l'administrateur pour changer le prix.
+            <div class="modal-header">
+                <h2>✏️ Modifier le produit</h2>
+                <span class="close" onclick="document.getElementById('editModal').style.display='none'">&times;</span>
             </div>
-            <form method="POST" enctype="multipart/form-data" id="editForm">
-                <input type="hidden" name="id_produit" id="edit_id">
-                
-                <div class="form-group">
-                    <label>Nom du produit *</label>
-                    <input type="text" name="nom" id="edit_nom" required>
+            <div class="modal-body">
+                <div class="info-note">
+                    ⚠️ Le prix ne peut pas être modifié. Contactez l'administrateur pour changer le prix.
                 </div>
-                
-                <div class="form-group">
-                    <label>Description</label>
-                    <textarea name="description" id="edit_description" rows="3"></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label>Prix (DH)</label>
-                    <input type="text" id="edit_prix_display" readonly style="background: #f5f5f5; color: #11998e; font-weight: bold;">
-                    <small style="color: #888;">Le prix est modifiable uniquement par l'administrateur</small>
-                </div>
-                
-                <div class="form-group">
-                    <label>Stock *</label>
-                    <input type="number" name="stock" id="edit_stock" required>
-                </div>
-                
-                <div class="form-group">
-                    <label>Catégorie *</label>
-                    <select name="id_categorie" id="edit_categorie" required>
-                        <?php foreach($categories as $categorie): ?>
-                            <option value="<?php echo $categorie['id_categorie']; ?>"><?php echo htmlspecialchars($categorie['nom']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label>Nouvelle image</label>
-                    <input type="file" name="image" accept="image/*">
-                    <div id="current_image_container" style="margin-top: 10px;"></div>
-                </div>
-                
-                <button type="submit" name="edit_product" class="btn btn-primary">💾 Enregistrer les modifications</button>
-            </form>
+                <form method="POST" enctype="multipart/form-data" id="editForm">
+                    <input type="hidden" name="id_produit" id="edit_id">
+                    
+                    <div class="form-group">
+                        <label>Nom du produit *</label>
+                        <input type="text" name="nom" id="edit_nom" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description" id="edit_description" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Prix (DH)</label>
+                        <input type="text" id="edit_prix_display" readonly style="background:#f5f5f5; color:#11998e; font-weight:bold;">
+                        <small style="color:#888;">Le prix est modifiable uniquement par l'administrateur</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Stock *</label>
+                        <input type="number" name="stock" id="edit_stock" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Catégorie *</label>
+                        <select name="id_categorie" id="edit_categorie" required>
+                            <?php foreach($categories as $categorie): ?>
+                                <option value="<?php echo $categorie['id_categorie']; ?>"><?php echo htmlspecialchars($categorie['nom']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Nouvelle image</label>
+                        <input type="file" name="image" accept="image/*">
+                        <div id="current_image_container" style="margin-top: 10px;"></div>
+                    </div>
+                    
+                    <button type="submit" name="edit_product" class="btn btn-primary">💾 Enregistrer</button>
+                </form>
+            </div>
         </div>
     </div>
-    
+
     <!-- MODAL POUR MODIFIER UNE COMMANDE -->
     <div id="editOrderModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeOrderModal()">&times;</span>
-            <h2>✏️ Modifier la commande #<span id="edit_order_id"></span></h2>
-            
-            <form method="POST" id="editOrderForm">
-                <input type="hidden" name="id_commande" id="order_id">
-                <input type="hidden" name="update_order_details" value="1">
-                
-                <div class="form-group">
-                    <label>👤 Client</label>
-                    <input type="text" id="order_client" class="form-control" readonly style="background: #f5f5f5;">
-                </div>
-                
-                <div class="form-group">
-                    <label>📞 Téléphone</label>
-                    <input type="text" id="order_phone" class="form-control" readonly style="background: #f5f5f5;">
-                </div>
-                
-                <div class="form-group">
-                    <label>🏷️ Statut de la commande</label>
-                    <select name="id_status" id="order_status" class="form-control" style="width: 100%; padding: 8px;">
-                        <?php foreach($status_list as $status): ?>
-                            <option value="<?php echo $status['id_status']; ?>"><?php echo htmlspecialchars($status['nom']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label>📝 Adresse de livraison</label>
-                    <textarea name="adresse_livraison" id="order_address" rows="2" class="form-control" style="width: 100%;"></textarea>
-                </div>
-                
-                <h3 style="margin: 20px 0 15px 0;">🛍️ Produits commandés</h3>
-                <div id="order_products_list" style="margin-bottom: 20px;"></div>
-                
-                <div class="add-product-section">
-                    <label style="font-weight: bold;">➕ Ajouter un produit</label>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
-                        <select id="add_product_select" style="flex: 2; padding: 8px; border-radius: 5px; border: 1px solid #ddd;">
-                            <option value="">-- Sélectionner un produit --</option>
-                            <?php foreach($all_products as $product): ?>
-                                <option value="<?php echo $product['id_produit']; ?>" data-prix="<?php echo $product['prix']; ?>" data-stock="<?php echo $product['stock']; ?>">
-                                    <?php echo htmlspecialchars($product['nom']); ?> - <?php echo number_format($product['prix'], 0, ',', ' '); ?> DH (Stock: <?php echo $product['stock']; ?>)
-                                </option>
+            <div class="modal-header">
+                <h2>✏️ Modifier la commande #<span id="edit_order_id"></span></h2>
+                <span class="close" onclick="closeOrderModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form method="POST" id="editOrderForm">
+                    <input type="hidden" name="id_commande" id="order_id">
+                    <input type="hidden" name="update_order_details" value="1">
+                    
+                    <div class="form-group">
+                        <label>👤 Client</label>
+                        <input type="text" id="order_client" readonly style="background:#f5f5f5;">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📞 Téléphone</label>
+                        <input type="text" id="order_phone" readonly style="background:#f5f5f5;">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>🏷️ Statut</label>
+                        <select name="id_status" id="order_status">
+                            <?php foreach($status_list as $status): ?>
+                                <option value="<?php echo $status['id_status']; ?>"><?php echo htmlspecialchars($status['nom']); ?></option>
                             <?php endforeach; ?>
                         </select>
-                        <input type="number" id="add_product_qty" placeholder="Quantité" min="1" style="width: 100px; padding: 8px; border-radius: 5px; border: 1px solid #ddd;">
-                        <button type="button" class="btn btn-primary" onclick="addProductToOrder()">➕ Ajouter</button>
                     </div>
-                </div>
-                
-                <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; text-align: right;">
-                    <strong>💰 Total de la commande : </strong>
-                    <span id="order_total_display" style="font-size: 20px; color: #11998e;">0 DH</span>
-                </div>
-                
-                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-                    <button type="button" class="btn btn-secondary" onclick="closeOrderModal()">Annuler</button>
-                    <button type="submit" class="btn btn-primary">💾 Enregistrer les modifications</button>
-                </div>
-            </form>
+                    
+                    <div class="form-group">
+                        <label>📝 Adresse de livraison</label>
+                        <textarea name="adresse_livraison" id="order_address" rows="2"></textarea>
+                    </div>
+                    
+                    <h3 style="margin: 20px 0 15px; font-size: 16px;">🛍️ Produits</h3>
+                    <div id="order_products_list" style="margin-bottom: 20px;"></div>
+                    
+                    <div class="add-product-section">
+                        <label style="font-weight: bold;">➕ Ajouter un produit</label>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+                            <select id="add_product_select" style="flex: 2; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                                <option value="">-- Sélectionner --</option>
+                                <?php foreach($all_products as $product): ?>
+                                    <option value="<?php echo $product['id_produit']; ?>" data-prix="<?php echo $product['prix']; ?>" data-stock="<?php echo $product['stock']; ?>">
+                                        <?php echo htmlspecialchars($product['nom']); ?> - <?php echo number_format($product['prix'], 0, ',', ' '); ?> DH (Stock: <?php echo $product['stock']; ?>)
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <input type="number" id="add_product_qty" placeholder="Qté" min="1" style="width: 80px; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                            <button type="button" class="btn btn-primary" onclick="addProductToOrder()">➕</button>
+                        </div>
+                    </div>
+                    
+                    <div style="margin: 20px 0; padding: 15px; background: #f9fafb; border-radius: 8px; text-align: right;">
+                        <strong>💰 Total : </strong>
+                        <span id="order_total_display" style="font-size: 20px; color: #11998e;">0 DH</span>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button type="button" class="btn btn-secondary" onclick="closeOrderModal()">Annuler</button>
+                        <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
-    
+
     <script>
         let currentOrderProducts = [];
-        
+
         function editProduct(product) {
             document.getElementById('edit_id').value = product.id_produit;
             document.getElementById('edit_nom').value = product.nom;
@@ -1006,15 +1205,15 @@ $stats['confirmed_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
                 imageContainer.innerHTML = `
                     <p>Image actuelle :</p>
                     <img src="../uploads/products/${product.image}" class="current-image">
-                    <small style="display: block; color: #666;">Laissez vide pour conserver cette image</small>
+                    <small style="display: block; color: #666;">Laissez vide pour conserver</small>
                 `;
             } else {
-                imageContainer.innerHTML = '<small style="color: #666;">Aucune image actuellement</small>';
+                imageContainer.innerHTML = '<small style="color:#666;">Aucune image</small>';
             }
             
             document.getElementById('editModal').style.display = 'block';
         }
-        
+
         function editOrder(orderId, clientName, clientPhone, currentStatus, currentAddress, products) {
             document.getElementById('edit_order_id').innerText = orderId;
             document.getElementById('order_id').value = orderId;
@@ -1029,11 +1228,11 @@ $stats['confirmed_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
             
             document.getElementById('editOrderModal').style.display = 'block';
         }
-        
+
         function renderOrderProducts() {
             const container = document.getElementById('order_products_list');
             if (!currentOrderProducts.length) {
-                container.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">Aucun produit dans cette commande</p>';
+                container.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">Aucun produit</p>';
                 return;
             }
             
@@ -1042,58 +1241,51 @@ $stats['confirmed_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
                 const productDiv = document.createElement('div');
                 productDiv.className = 'order-product-item';
                 productDiv.innerHTML = `
-                    <div class="order-product-info">
+                    <div>
                         <strong>${escapeHtml(product.nom)}</strong><br>
-                        <small>Prix unitaire: ${formatNumber(product.prix)} DH | Stock dispo: ${product.stock_disponible}</small>
+                        <small>${formatNumber(product.prix)} DH | Stock: ${product.stock_disponible}</small>
                         <input type="hidden" name="products[${index}][id_produit]" value="${product.id_produit}">
-                        <input type="hidden" name="products[${index}][nom]" value="${escapeHtml(product.nom)}">
                     </div>
                     <div class="order-product-actions">
-                        <label>Quantité:</label>
+                        <label>Qté:</label>
                         <input type="number" name="products[${index}][quantite]" value="${product.quantite}" min="1" max="${product.stock_disponible + product.quantite}" onchange="updateProductQuantity(${index}, this.value)">
                         <span><strong>${formatNumber(product.prix * product.quantite)} DH</strong></span>
-                        <button type="button" class="btn-icon delete" onclick="removeProductFromOrder(${index})" title="Supprimer">🗑️</button>
+                        <button type="button" class="btn-icon" onclick="removeProductFromOrder(${index})">🗑️</button>
                     </div>
                 `;
                 container.appendChild(productDiv);
             });
         }
-        
+
         function updateProductQuantity(index, newQuantity) {
             newQuantity = parseInt(newQuantity);
-            if (isNaN(newQuantity) || newQuantity < 1) {
-                newQuantity = 1;
-            }
+            if (isNaN(newQuantity) || newQuantity < 1) newQuantity = 1;
             const maxStock = currentOrderProducts[index].stock_disponible + currentOrderProducts[index].quantite;
             if (newQuantity > maxStock) {
-                alert(`Stock insuffisant. Quantité maximum disponible: ${maxStock}`);
+                alert(`Stock max: ${maxStock}`);
                 newQuantity = maxStock;
             }
             currentOrderProducts[index].quantite = newQuantity;
             renderOrderProducts();
             updateOrderTotal();
         }
-        
+
         function removeProductFromOrder(index) {
-            if (confirm('Supprimer ce produit de la commande ?')) {
+            if (confirm('Supprimer ce produit ?')) {
                 currentOrderProducts.splice(index, 1);
                 renderOrderProducts();
                 updateOrderTotal();
             }
         }
-        
+
         function addProductToOrder() {
             const select = document.getElementById('add_product_select');
             const qtyInput = document.getElementById('add_product_qty');
             const productId = select.value;
             const quantity = parseInt(qtyInput.value);
             
-            if (!productId) {
-                alert('Veuillez sélectionner un produit');
-                return;
-            }
-            if (!quantity || quantity < 1) {
-                alert('Veuillez entrer une quantité valide');
+            if (!productId || !quantity || quantity < 1) {
+                alert('Sélectionnez un produit et une quantité valide');
                 return;
             }
             
@@ -1106,7 +1298,7 @@ $stats['confirmed_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
             if (existingIndex !== -1) {
                 const newQty = currentOrderProducts[existingIndex].quantite + quantity;
                 if (newQty > productStock + currentOrderProducts[existingIndex].quantite) {
-                    alert(`Stock insuffisant. Quantité maximum disponible: ${productStock + currentOrderProducts[existingIndex].quantite}`);
+                    alert(`Stock max: ${productStock + currentOrderProducts[existingIndex].quantite}`);
                     return;
                 }
                 currentOrderProducts[existingIndex].quantite = newQty;
@@ -1125,7 +1317,7 @@ $stats['confirmed_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
             renderOrderProducts();
             updateOrderTotal();
         }
-        
+
         function updateOrderTotal() {
             const total = currentOrderProducts.reduce((sum, product) => sum + (product.prix * product.quantite), 0);
             document.getElementById('order_total_display').innerHTML = formatNumber(total) + ' DH';
@@ -1140,11 +1332,11 @@ $stats['confirmed_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
             }
             totalInput.value = total;
         }
-        
+
         function formatNumber(n) {
-            return new Intl.NumberFormat('fr-FR').format(Math.round(n));
+            return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
         }
-        
+
         function escapeHtml(str) {
             if (!str) return '';
             return str.replace(/[&<>]/g, function(m) {
@@ -1154,22 +1346,18 @@ $stats['confirmed_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
                 return m;
             });
         }
-        
+
         function closeOrderModal() {
             document.getElementById('editOrderModal').style.display = 'none';
             document.getElementById('add_product_select').value = '';
             document.getElementById('add_product_qty').value = '';
         }
-        
+
         window.onclick = function(event) {
             const editModal = document.getElementById('editModal');
             const orderModal = document.getElementById('editOrderModal');
-            if (event.target == editModal) {
-                editModal.style.display = 'none';
-            }
-            if (event.target == orderModal) {
-                closeOrderModal();
-            }
+            if (event.target == editModal) editModal.style.display = 'none';
+            if (event.target == orderModal) closeOrderModal();
         }
     </script>
 </body>

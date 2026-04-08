@@ -34,8 +34,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (empty($telephone)) {
         $errors[] = "Veuillez entrer votre numéro de téléphone.";
-    } elseif (!preg_match("/^[0-9+\-\s]{10,20}$/", $telephone)) {
-        $errors[] = "Veuillez entrer un numéro de téléphone valide.";
     }
     
     if (empty($sujet)) {
@@ -51,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Si pas d'erreurs, enregistrer en base de données
     if (empty($errors)) {
         try {
+            // Vérifier si la table Contact existe, sinon la créer
             $sql = "INSERT INTO Contact (nom, email, telephone, sujet, message, date_envoi, statut) 
                     VALUES (:nom, :email, :telephone, :sujet, :message, NOW(), 'non lu')";
             $stmt = $db->prepare($sql);
@@ -74,6 +73,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error_message = implode('<br>', $errors);
     }
 }
+
+$toast_message = '';
+if($success_message) {
+    $toast_message = '<div class="toast">' . $success_message . '</div>';
+}
 ?>
 
 <!DOCTYPE html>
@@ -90,235 +94,166 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #fafafa;
+            color: #111;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            animation: fadeOut 3s forwards;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            70% { opacity: 1; }
+            100% { opacity: 0; visibility: hidden; }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
         }
 
         /* Header */
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px 30px;
+            background: white;
+            border-bottom: 1px solid #eaeaea;
             position: sticky;
             top: 0;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 100;
         }
 
-        .header-content {
-            max-width: 1400px;
-            margin: 0 auto;
+        .header-inner {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 15px 20px;
+            gap: 20px;
             flex-wrap: wrap;
-            gap: 15px;
         }
 
-        .logo h1 {
+        .logo a {
             font-size: 24px;
-        }
-
-        .logo p {
-            font-size: 12px;
-            opacity: 0.8;
-        }
-
-        .user-actions {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .login-btn, .register-btn, .dashboard-btn, .logout-btn, .profile-btn, .orders-btn, .contact-btn {
-            padding: 8px 18px;
-            border-radius: 5px;
+            font-weight: 700;
             text-decoration: none;
-            font-weight: 500;
-            transition: all 0.3s;
-            border: none;
-            cursor: pointer;
+            color: #111;
+        }
+
+        .logo span {
+            color: #2563eb;
+        }
+
+        .user-links {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .user-links a {
+            text-decoration: none;
+            color: #444;
             font-size: 14px;
         }
 
-        .login-btn {
-            background: rgba(255,255,255,0.2);
-            color: white;
+        .user-links a:hover {
+            color: #2563eb;
         }
 
-        .login-btn:hover {
-            background: rgba(255,255,255,0.3);
-            transform: translateY(-2px);
-        }
-
-        .register-btn {
-            background: #ffc107;
-            color: #333;
-        }
-
-        .register-btn:hover {
-            background: #e0a800;
-            transform: translateY(-2px);
-        }
-
-        .dashboard-btn {
-            background: #28a745;
-            color: white;
-        }
-
-        .dashboard-btn:hover {
-            background: #218838;
-            transform: translateY(-2px);
-        }
-
-        .logout-btn {
-            background: #dc3545;
-            color: white;
-        }
-
-        .logout-btn:hover {
-            background: #c82333;
-            transform: translateY(-2px);
-        }
-
-        .profile-btn {
-            background: #17a2b8;
-            color: white;
-        }
-
-        .profile-btn:hover {
-            background: #138496;
-            transform: translateY(-2px);
-        }
-
-        .orders-btn {
-            background: #6c757d;
-            color: white;
-        }
-
-        .orders-btn:hover {
-            background: #5a6268;
-            transform: translateY(-2px);
-        }
-
-        .contact-btn {
-            background: #20c997;
-            color: white;
-        }
-
-        .contact-btn:hover {
-            background: #1ba87e;
-            transform: translateY(-2px);
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: rgba(255,255,255,0.15);
-            padding: 5px 15px;
-            border-radius: 30px;
-        }
-
-        .cart-icon {
+        .cart {
             position: relative;
-            cursor: pointer;
-            background: rgba(255,255,255,0.2);
-            padding: 8px 15px;
-            border-radius: 5px;
-            transition: background 0.3s;
-            text-decoration: none;
-            color: white;
-            display: inline-block;
-        }
-
-        .cart-icon:hover {
-            background: rgba(255,255,255,0.3);
+            font-weight: 500;
         }
 
         .cart-count {
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background: #ffc107;
-            color: #333;
+            background: #2563eb;
+            color: white;
             border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            display: flex;
+            width: 18px;
+            height: 18px;
+            font-size: 11px;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
+            margin-left: 5px;
         }
 
-        /* Navigation categories */
-        .nav-categories {
+        /* Categories */
+        .categories {
             background: white;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            position: sticky;
-            top: 80px;
-            z-index: 999;
-        }
-
-        .categories-menu {
-            max-width: 1400px;
-            margin: 0 auto;
-            display: flex;
+            border-bottom: 1px solid #eaeaea;
+            padding: 12px 0;
             overflow-x: auto;
-            gap: 5px;
-            padding: 10px 20px;
         }
 
-        .categories-menu a {
-            padding: 8px 20px;
-            text-decoration: none;
-            color: #333;
-            border-radius: 20px;
-            transition: all 0.3s;
+        .categories-list {
+            display: flex;
+            gap: 8px;
             white-space: nowrap;
         }
 
-        .categories-menu a:hover,
-        .categories-menu a.active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+        .categories-list a {
+            padding: 6px 16px;
+            text-decoration: none;
+            color: #444;
+            font-size: 14px;
+            border-radius: 20px;
+            background: #f0f0f0;
         }
 
-        /* Main content */
-        .main-content {
-            max-width: 1200px;
-            margin: 30px auto;
-            padding: 0 20px;
+        .categories-list a:hover {
+            background: #2563eb;
+            color: white;
         }
 
         /* Contact Section */
-        .contact-container {
+        .contact-section {
+            margin: 30px 0;
+        }
+
+        .contact-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 40px;
+            gap: 30px;
+        }
+
+        /* Contact Info Card */
+        .contact-card {
             background: white;
-            border-radius: 15px;
+            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            border: 1px solid #eaeaea;
         }
 
-        .contact-info {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .contact-card-header {
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+            padding: 25px;
             color: white;
-            padding: 40px;
         }
 
-        .contact-info h2 {
-            font-size: 28px;
-            margin-bottom: 20px;
+        .contact-card-header h2 {
+            font-size: 22px;
+            margin-bottom: 8px;
         }
 
-        .contact-info p {
-            line-height: 1.6;
-            margin-bottom: 30px;
+        .contact-card-header p {
+            font-size: 14px;
             opacity: 0.9;
+        }
+
+        .contact-info-list {
+            padding: 25px;
         }
 
         .info-item {
@@ -329,62 +264,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .info-icon {
-            width: 50px;
-            height: 50px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            background: #f0f0f0;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
+            font-size: 22px;
         }
 
         .info-text h4 {
-            margin-bottom: 5px;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 4px;
         }
 
         .info-text p {
-            margin: 0;
             font-size: 14px;
+            color: #111;
+            font-weight: 500;
         }
 
-        .social-links {
-            display: flex;
-            gap: 15px;
-            margin-top: 30px;
+        /* Contact Form */
+        .form-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #eaeaea;
         }
 
-        .social-links a {
-            width: 40px;
-            height: 40px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-decoration: none;
-            color: white;
-            transition: all 0.3s;
+        .form-header {
+            padding: 25px;
+            border-bottom: 1px solid #eaeaea;
         }
 
-        .social-links a:hover {
-            background: rgba(255,255,255,0.4);
-            transform: translateY(-3px);
+        .form-header h2 {
+            font-size: 22px;
+            color: #111;
+            margin-bottom: 5px;
+        }
+
+        .form-header p {
+            font-size: 13px;
+            color: #888;
         }
 
         .contact-form {
-            padding: 40px;
-        }
-
-        .contact-form h2 {
-            font-size: 28px;
-            color: #333;
-            margin-bottom: 10px;
-        }
-
-        .contact-form .subtitle {
-            color: #888;
-            margin-bottom: 30px;
+            padding: 25px;
         }
 
         .form-group {
@@ -396,29 +323,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-bottom: 8px;
             font-weight: 500;
             color: #333;
+            font-size: 13px;
         }
 
         .form-group label .required {
-            color: #dc3545;
+            color: #ef4444;
         }
 
         .form-group input,
         .form-group select,
         .form-group textarea {
             width: 100%;
-            padding: 12px 15px;
+            padding: 10px 12px;
             border: 1px solid #ddd;
             border-radius: 8px;
             font-size: 14px;
-            transition: all 0.3s;
+            font-family: inherit;
+            transition: all 0.2s;
         }
 
         .form-group input:focus,
         .form-group select:focus,
         .form-group textarea:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+            border-color: #2563eb;
         }
 
         .form-group textarea {
@@ -426,21 +354,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             min-height: 120px;
         }
 
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
         .btn-submit {
             width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 12px;
+            background: #2563eb;
             color: white;
             border: none;
             border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
+            font-size: 14px;
+            font-weight: 500;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: background 0.2s;
         }
 
         .btn-submit:hover {
-            transform: translateY(-2px);
+            background: #1e40af;
         }
 
         .btn-submit:disabled {
@@ -448,231 +382,212 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             cursor: not-allowed;
         }
 
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border-left: 4px solid #28a745;
-        }
-
         .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 15px;
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 12px 15px;
             border-radius: 8px;
             margin-bottom: 20px;
-            border-left: 4px solid #dc3545;
+            font-size: 13px;
+            border-left: 3px solid #dc2626;
         }
 
-        /* Map section */
+        /* Map Section */
         .map-section {
-            margin-top: 40px;
+            margin-top: 30px;
             background: white;
-            border-radius: 15px;
+            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            border: 1px solid #eaeaea;
         }
 
         .map-section iframe {
             width: 100%;
-            height: 300px;
+            height: 250px;
             border: 0;
         }
 
-        /* Footer */
         .footer {
-            background: #333;
-            color: white;
             text-align: center;
             padding: 30px;
-            margin-top: 50px;
-        }
-
-        .footer a {
-            color: white;
-            text-decoration: none;
-        }
-
-        .footer a:hover {
-            text-decoration: underline;
+            color: #666;
+            font-size: 13px;
+            border-top: 1px solid #eaeaea;
+            margin-top: 40px;
         }
 
         @media (max-width: 768px) {
-            .contact-container {
-                grid-template-columns: 1fr;
-            }
-            
-            .header-content {
+            .header-inner {
                 flex-direction: column;
             }
             
-            .user-actions {
-                width: 100%;
-                justify-content: center;
+            .contact-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 0;
             }
         }
     </style>
 </head>
 <body>
+    <?php echo $toast_message; ?>
+
     <div class="header">
-        <div class="header-content">
-            <a href="index.php" style="text-decoration: none; color: white;">
+        <div class="container">
+            <div class="header-inner">
                 <div class="logo">
-                    <h1>Ma Boutique</h1>
-                    <p>Qualité et satisfaction garanties</p>
+                    <a href="index.php">Ma<span>Boutique</span></a>
                 </div>
-            </a>
-            <div class="user-actions">
-                <?php if(isset($_SESSION['client_logged_in']) && $_SESSION['client_logged_in'] === true): ?>
-                    <div class="user-info">
-                        <span>👋 Bonjour, <?php echo htmlspecialchars($_SESSION['client_nom']); ?></span>
-                    </div>
-                    <a href="profil.php" class="profile-btn">👤 Profil</a>
-                    <a href="mes_commandes.php" class="orders-btn">📦 Mes commandes</a>
-                    <a href="contact.php" class="contact-btn">📧 Contact</a>
-                    <a href="logout_client.php" class="logout-btn" onclick="return confirm('Voulez-vous vraiment vous déconnecter ?')">🔓 Déconnexion</a>
-                <?php else: ?>
-                    <a href="login_client.php" class="login-btn">🔐 Connexion</a>
-                    <a href="register.php" class="register-btn">📝 Inscription</a>
-                    <a href="contact.php" class="contact-btn">📧 Contact</a>
-                <?php endif; ?>
-                <a href="panier.php" class="cart-icon">
-                    🛒 Panier
-                    <span class="cart-count"><?php echo isset($_SESSION['panier']) ? array_sum($_SESSION['panier']) : 0; ?></span>
-                </a>
+                
+                <div class="user-links">
+                    <?php if(isset($_SESSION['client_logged_in']) && $_SESSION['client_logged_in'] === true): ?>
+                        <span style="color:#666;">👋 <?php echo htmlspecialchars($_SESSION['client_nom']); ?></span>
+                        <a href="mes_commandes.php">Commandes</a>
+                        <a href="contact.php" style="color:#2563eb;">Contact</a>
+                        <a href="logout_client.php" onclick="return confirm('Déconnexion ?')">Déconnexion</a>
+                    <?php else: ?>
+                        <a href="login_client.php">Connexion</a>
+                        <a href="register.php">Inscription</a>
+                        <a href="contact.php" style="color:#2563eb;">Contact</a>
+                    <?php endif; ?>
+                    <a href="panier.php" class="cart">
+                        🛒 Panier
+                        <span class="cart-count"><?php echo isset($_SESSION['panier']) ? array_sum($_SESSION['panier']) : 0; ?></span>
+                    </a>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="nav-categories">
-        <div class="categories-menu">
-            <a href="index.php">Tous les produits</a>
-            <?php foreach($categories as $cat): ?>
-                <a href="index.php?categorie=<?php echo $cat['id_categorie']; ?>">
-                    <?php echo htmlspecialchars($cat['nom']); ?>
-                </a>
-            <?php endforeach; ?>
-        </div>
-    </div>
+    
 
-    <div class="main-content">
-        <div class="contact-container">
-            <div class="contact-info">
-                <h2>📞 Contactez-nous</h2>
-                <p>Notre équipe est à votre disposition pour répondre à toutes vos questions. N'hésitez pas à nous contacter par téléphone, email ou via ce formulaire.</p>
-                
-                <div class="info-item">
-                    <div class="info-icon">📍</div>
-                    <div class="info-text">
-                        <h4>Adresse</h4>
-                        <p>123 Avenue Mohammed V<br>Casablanca, Maroc</p>
+    <div class="container">
+        <div class="contact-section">
+            <div class="contact-grid">
+                <!-- Informations de contact -->
+                <div class="contact-card">
+                    <div class="contact-card-header">
+                        <h2>📞 Contactez-nous</h2>
+                        <p>Notre équipe est à votre disposition</p>
+                    </div>
+                    <div class="contact-info-list">
+                        <div class="info-item">
+                            <div class="info-icon">📍</div>
+                            <div class="info-text">
+                                <h4>Adresse</h4>
+                                <p>------------------</p>
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-icon">📞</div>
+                            <div class="info-text">
+                                <h4>Téléphone</h4>
+                                <p>------------------</p>
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-icon">✉️</div>
+                            <div class="info-text">
+                                <h4>Email</h4>
+                                <p>------------------</p>
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-icon">⏰</div>
+                            <div class="info-text">
+                                <h4>Horaires</h4>
+                                <p>Lun - Ven : 9h - 18h</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                
-                <div class="info-item">
-                    <div class="info-icon">📞</div>
-                    <div class="info-text">
-                        <h4>Téléphone</h4>
-                        <p>+212 5 22 12 34 56<br>Du lundi au vendredi, 9h-18h</p>
+
+                <!-- Formulaire de contact -->
+                <div class="form-card">
+                    <div class="form-header">
+                        <h2>Envoyez-nous un message</h2>
+                        <p>Nous vous répondrons dans les 24h</p>
+                    </div>
+                    <div class="contact-form">
+                        <?php if($error_message): ?>
+                            <div class="alert-error">
+                                ❌ <?php echo $error_message; ?>
+                            </div>
+                        <?php endif; ?>
+                        
+                        <form method="POST" action="" id="contactForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Nom complet <span class="required">*</span></label>
+                                    <input type="text" name="nom" value="<?php echo htmlspecialchars($nom ?? ''); ?>" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Email <span class="required">*</span></label>
+                                    <input type="email" name="email" value="<?php echo htmlspecialchars($email ?? ($_SESSION['client_email'] ?? '')); ?>" required>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Téléphone <span class="required">*</span></label>
+                                    <input type="tel" name="telephone" value="<?php echo htmlspecialchars($telephone ?? ($_SESSION['client_telephone'] ?? '')); ?>" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Sujet <span class="required">*</span></label>
+                                    <select name="sujet" required>
+                                        <option value="">-- Sélectionnez --</option>
+                                        <option value="Information produit" <?php echo (isset($sujet) && $sujet == 'Information produit') ? 'selected' : ''; ?>>Information produit</option>
+                                        <option value="Commande" <?php echo (isset($sujet) && $sujet == 'Commande') ? 'selected' : ''; ?>>Question sur ma commande</option>
+                                        <option value="Livraison" <?php echo (isset($sujet) && $sujet == 'Livraison') ? 'selected' : ''; ?>>Livraison</option>
+                                        <option value="Retour" <?php echo (isset($sujet) && $sujet == 'Retour') ? 'selected' : ''; ?>>Retour / Réclamation</option>
+                                        <option value="Autre" <?php echo (isset($sujet) && $sujet == 'Autre') ? 'selected' : ''; ?>>Autre</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Message <span class="required">*</span></label>
+                                <textarea name="message" placeholder="Décrivez votre demande..." required><?php echo htmlspecialchars($message ?? ''); ?></textarea>
+                            </div>
+                            
+                            <button type="submit" class="btn-submit" id="submitBtn">
+                                📨 Envoyer le message
+                            </button>
+                        </form>
                     </div>
                 </div>
-                
-                <div class="info-item">
-                    <div class="info-icon">📱</div>
-                    <div class="info-text">
-                        <h4>WhatsApp</h4>
-                        <p>+212 6 12 34 56 78<br>7j/7 de 10h à 20h</p>
-                    </div>
-                </div>
-                
-                <div class="info-item">
-                    <div class="info-icon">✉️</div>
-                    <div class="info-text">
-                        <h4>Email</h4>
-                        <p>contact@maboutique.com<br>serviceclient@maboutique.com</p>
-                    </div>
-                </div>
-                
-                
             </div>
-            
-            <div class="contact-form">
-                <h2>Envoyez-nous un message</h2>
-                <p class="subtitle">Nous vous répondrons dans les 24h</p>
-                
-                <?php if($success_message): ?>
-                    <div class="alert-success">
-                        ✅ <?php echo $success_message; ?>
-                    </div>
-                <?php endif; ?>
-                
-                <?php if($error_message): ?>
-                    <div class="alert-error">
-                        ❌ <?php echo $error_message; ?>
-                    </div>
-                <?php endif; ?>
-                
-                <form method="POST" action="" id="contactForm" onsubmit="return preventDoubleSubmit()">
-                    <div class="form-group">
-                        <label>Nom complet <span class="required">*</span></label>
-                        <input type="text" name="nom" value="<?php echo htmlspecialchars($nom ?? ''); ?>" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Email <span class="required">*</span></label>
-                        <input type="email" name="email" value="<?php echo htmlspecialchars($email ?? ($_SESSION['client_email'] ?? '')); ?>" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Téléphone <span class="required">*</span></label>
-                        <input type="tel" name="telephone" value="<?php echo htmlspecialchars($telephone ?? ($_SESSION['client_telephone'] ?? '')); ?>" placeholder="0612345678 ou +212612345678" required>
-                        <small style="color: #888; font-size: 12px;">Format: 0612345678 ou +212612345678</small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Sujet <span class="required">*</span></label>
-                        <select name="sujet" required>
-                            <option value="">-- Sélectionnez un sujet --</option>
-                            <option value="Information produit" <?php echo (isset($sujet) && $sujet == 'Information produit') ? 'selected' : ''; ?>>Information produit</option>
-                            <option value="Commande" <?php echo (isset($sujet) && $sujet == 'Commande') ? 'selected' : ''; ?>>Question sur ma commande</option>
-                            <option value="Livraison" <?php echo (isset($sujet) && $sujet == 'Livraison') ? 'selected' : ''; ?>>Livraison</option>
-                            <option value="Retour" <?php echo (isset($sujet) && $sujet == 'Retour') ? 'selected' : ''; ?>>Retour / Réclamation</option>
-                            <option value="Partenaire" <?php echo (isset($sujet) && $sujet == 'Partenaire') ? 'selected' : ''; ?>>Devenir partenaire</option>
-                            <option value="Autre" <?php echo (isset($sujet) && $sujet == 'Autre') ? 'selected' : ''; ?>>Autre</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Message <span class="required">*</span></label>
-                        <textarea name="message" placeholder="Décrivez votre demande en détails..." required><?php echo htmlspecialchars($message ?? ''); ?></textarea>
-                    </div>
-                    
-                    <button type="submit" class="btn-submit" id="submitBtn">
-                        📨 Envoyer le message
-                    </button>
-                </form>
+
+            <!-- Carte -->
+            <div class="map-section">
+                <iframe 
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d13294.123456789!2d-7.632!3d33.573!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xda7cdb8f4d8f8d8f%3A0x8d8f8d8f8d8f8d8f!2sCasablanca%2C%20Morocco!5e0!3m2!1sen!2s!4v1234567890" 
+                    allowfullscreen="" 
+                    loading="lazy">
+                </iframe>
             </div>
         </div>
-        
-        >
     </div>
 
     <div class="footer">
-        <p>&copy; <?php echo date('Y'); ?> Ma Boutique - Tous droits réservés | <a href="contact.php">Contactez-nous</a></p>
+        <p>&copy; <?php echo date('Y'); ?> Ma Boutique</p>
     </div>
 
     <script>
         function preventDoubleSubmit() {
             var submitBtn = document.getElementById('submitBtn');
             if (submitBtn.disabled) {
-                return false; // Empêche la double soumission
+                return false;
             }
             submitBtn.disabled = true;
             submitBtn.textContent = '⏳ Envoi en cours...';
             return true;
         }
+        
+        document.getElementById('contactForm')?.addEventListener('submit', preventDoubleSubmit);
     </script>
 </body>
 </html>

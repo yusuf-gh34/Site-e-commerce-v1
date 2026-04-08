@@ -23,19 +23,42 @@ $commande_id = null;
 $prix_total = 0;
 $adresse_livraison_saved = '';
 
-// Traitement du formulaire de commande
+// Récupérer l'adresse de l'utilisateur depuis la base de données
+$query_user = "SELECT adresse FROM utilisateur WHERE id_utilisateur = :id_utilisateur";
+$stmt_user = $db->prepare($query_user);
+$stmt_user->bindParam(':id_utilisateur', $_SESSION['client_id']);
+$stmt_user->execute();
+$user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
+$user_adresse = $user_data['adresse'] ?? '';
+
+// Traitement du formulaire
 if($_SERVER["REQUEST_METHOD"] == "POST") {
     $adresse_livraison = trim($_POST['adresse_livraison'] ?? '');
     $notes = trim($_POST['notes'] ?? '');
     
-    // Validation
     if(empty($adresse_livraison)) {
         $error = "Veuillez saisir votre adresse de livraison";
     } else {
         try {
             $db->beginTransaction();
             
-            // Calculer le prix total
+            // Vérifier le stock avant de créer la commande
+            foreach($_SESSION['panier'] as $id_produit => $quantite) {
+                if(isset($_SESSION['panier_produits'][$id_produit])) {
+                    // Vérifier le stock actuel
+                    $check_stock = "SELECT stock FROM Produit WHERE id_produit = :id_produit FOR UPDATE";
+                    $check_stmt = $db->prepare($check_stock);
+                    $check_stmt->bindParam(':id_produit', $id_produit);
+                    $check_stmt->execute();
+                    $produit = $check_stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if(!$produit || $produit['stock'] < $quantite) {
+                        throw new Exception("Stock insuffisant pour un des produits");
+                    }
+                }
+            }
+            
+            // Calculer le total
             $prix_total = 0;
             foreach($_SESSION['panier'] as $id_produit => $quantite) {
                 if(isset($_SESSION['panier_produits'][$id_produit])) {
@@ -43,9 +66,9 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
             }
             
-            // 1. Créer la commande (id_status = 1 = "En attente") - AJOUT de adresse_livraison
-            $query = "INSERT INTO Commande (id_status, prix_totale, id_utilisateur, adresse_livraison) 
-                      VALUES (1, :prix_total, :id_utilisateur, :adresse_livraison)";
+            // Créer la commande
+            $query = "INSERT INTO Commande (id_status, prix_totale, id_utilisateur, adresse_livraison, date_commande) 
+                      VALUES (1, :prix_total, :id_utilisateur, :adresse_livraison, NOW())";
             $stmt = $db->prepare($query);
             $stmt->bindParam(':prix_total', $prix_total);
             $stmt->bindParam(':id_utilisateur', $_SESSION['client_id']);
@@ -53,11 +76,18 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt->execute();
             
             $commande_id = $db->lastInsertId();
-            
-            // Sauvegarder l'adresse pour l'affichage
             $adresse_livraison_saved = $adresse_livraison;
             
-            // 2. Créer les lignes de commande et mettre à jour le stock
+            // Mettre à jour l'adresse dans la table utilisateur si elle a changé
+            if($user_adresse !== $adresse_livraison && !empty($adresse_livraison)) {
+                $update_adresse = "UPDATE utilisateur SET adresse = :adresse WHERE id_utilisateur = :id_utilisateur";
+                $update_stmt = $db->prepare($update_adresse);
+                $update_stmt->bindParam(':adresse', $adresse_livraison);
+                $update_stmt->bindParam(':id_utilisateur', $_SESSION['client_id']);
+                $update_stmt->execute();
+            }
+            
+            // Créer les lignes de commande
             $query = "INSERT INTO Ligne_commande (id_commande, id_produit, quantite, prix_unitaire) 
                       VALUES (:id_commande, :id_produit, :quantite, :prix_unitaire)";
             $stmt = $db->prepare($query);
@@ -81,7 +111,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
             }
             
-            // 3. Créer le règlement (paiement à la livraison)
+            // Créer le règlement
             $query = "INSERT INTO Reglement (montant, paye_a_livraison, id_commande) 
                       VALUES (:prix_total, 0, :id_commande)";
             $stmt = $db->prepare($query);
@@ -89,16 +119,17 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt->bindParam(':id_commande', $commande_id);
             $stmt->execute();
             
-            // 4. Vider le panier
-            $_SESSION['panier'] = [];
-            $_SESSION['panier_produits'] = [];
-            
             $db->commit();
+            
+            // Vider le panier
+            unset($_SESSION['panier']);
+            unset($_SESSION['panier_produits']);
+            
             $success = true;
             
         } catch(Exception $e) {
             $db->rollBack();
-            $error = "Une erreur est survenue lors de la création de votre commande : " . $e->getMessage();
+            $error = "Une erreur est survenue: " . $e->getMessage();
         }
     }
 }
@@ -109,7 +140,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Passer commande - Boutique</title>
+    <title>Commande - Ma Boutique</title>
     <style>
         * {
             margin: 0;
@@ -118,159 +149,212 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #fafafa;
+            color: #111;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
         }
 
         /* Header */
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px 30px;
+            background: white;
+            border-bottom: 1px solid #eaeaea;
             position: sticky;
             top: 0;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 100;
         }
 
-        .header-content {
-            max-width: 1200px;
-            margin: 0 auto;
+        .header-inner {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 15px 20px;
+            gap: 20px;
             flex-wrap: wrap;
-            gap: 15px;
         }
 
-        .logo h1 {
+        .logo a {
             font-size: 24px;
+            font-weight: 700;
+            text-decoration: none;
+            color: #111;
         }
 
-        .logo p {
-            font-size: 12px;
-            opacity: 0.8;
+        .logo span {
+            color: #2563eb;
         }
 
         .back-btn {
-            background: rgba(255,255,255,0.2);
-            padding: 10px 20px;
-            border-radius: 5px;
             text-decoration: none;
-            color: white;
-            transition: background 0.3s;
+            color: #444;
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            background: #f0f0f0;
+            transition: all 0.2s;
         }
 
         .back-btn:hover {
-            background: rgba(255,255,255,0.3);
+            background: #e0e0e0;
         }
 
         .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            background: rgba(255,255,255,0.15);
-            padding: 8px 20px;
+            background: #f0f0f0;
+            padding: 8px 18px;
             border-radius: 30px;
+            font-size: 14px;
         }
 
-        /* Main content */
+        /* Style distinctif pour le nom utilisateur */
+        .user-name {
+            position: relative;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white !important;
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+            text-decoration: none;
+        }
+
+        .user-name:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            color: white !important;
+        }
+
+        .user-name::before {
+            content: '👤';
+            font-size: 14px;
+        }
+
+        /* Main */
         .main-content {
-            max-width: 1200px;
             margin: 40px auto;
-            padding: 0 20px;
         }
 
-        /* Success message */
-        .success-container {
+        /* Success */
+        .success-card {
             background: white;
-            border-radius: 15px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+            border-radius: 16px;
+            border: 1px solid #eaeaea;
             padding: 40px;
             text-align: center;
+            max-width: 600px;
+            margin: 0 auto;
         }
 
         .success-icon {
-            font-size: 80px;
+            font-size: 64px;
             margin-bottom: 20px;
         }
 
-        .success-container h2 {
-            color: #28a745;
-            margin-bottom: 15px;
-        }
-
-        .order-number {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 10px;
-            margin: 20px 0;
+        .success-card h2 {
+            color: #10b981;
             font-size: 24px;
-            font-weight: bold;
-            color: #667eea;
-        }
-
-        .delivery-address {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 10px;
-            margin: 20px 0;
-            text-align: left;
-            border-left: 4px solid #28a745;
-        }
-
-        .delivery-address h4 {
-            color: #333;
             margin-bottom: 10px;
         }
 
+        .order-number {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 20px 0;
+            font-size: 20px;
+            font-weight: 600;
+            color: #2563eb;
+        }
+
+        .delivery-address {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 20px 0;
+            text-align: left;
+            border-left: 3px solid #10b981;
+        }
+
+        .delivery-address h4 {
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #666;
+        }
+
         .btn-orders {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #2563eb;
             color: white;
-            padding: 12px 30px;
+            padding: 10px 25px;
             border-radius: 8px;
             text-decoration: none;
             display: inline-block;
-            margin-top: 20px;
+            margin: 10px 5px;
+            font-weight: 500;
+        }
+
+        .btn-orders:hover {
+            background: #1e40af;
+        }
+
+        .btn-continue {
+            background: #f0f0f0;
+            color: #444;
+            padding: 10px 25px;
+            border-radius: 8px;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px 5px;
         }
 
         /* Order form */
-        .order-container {
+        .order-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 30px;
         }
 
         @media (max-width: 768px) {
-            .order-container {
+            .order-grid {
                 grid-template-columns: 1fr;
             }
         }
 
-        .order-section {
+        .order-card {
             background: white;
-            border-radius: 15px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+            border-radius: 16px;
+            border: 1px solid #eaeaea;
             overflow: hidden;
         }
 
-        .section-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+        .card-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid #eaeaea;
+            background: white;
+        }
+
+        .card-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-body {
             padding: 20px;
         }
 
-        .section-header h3 {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .section-body {
-            padding: 25px;
-        }
-
-        /* Form styles */
+        /* Form */
         .form-group {
             margin-bottom: 20px;
         }
@@ -279,11 +363,12 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
+            font-size: 14px;
             color: #333;
         }
 
         .form-group label .required {
-            color: #dc3545;
+            color: #ef4444;
         }
 
         .form-group input, 
@@ -294,6 +379,19 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
             border-radius: 8px;
             font-size: 14px;
             font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus, 
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px rgba(37,99,235,0.1);
+        }
+
+        .form-group input:disabled {
+            background: #f5f5f5;
+            color: #666;
         }
 
         .form-group textarea {
@@ -301,209 +399,239 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
             min-height: 100px;
         }
 
-        .form-group input:focus, 
-        .form-group textarea:focus {
-            outline: none;
-            border-color: #667eea;
+        small {
+            color: #888;
+            font-size: 12px;
         }
 
-        /* Payment info */
-        .payment-info {
-            background: #e8f5e9;
-            border: 2px solid #4caf50;
-            border-radius: 10px;
+        /* Payment */
+        .payment-box {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            border-radius: 12px;
             padding: 20px;
             text-align: center;
             margin-bottom: 20px;
         }
 
-        .payment-info .icon {
-            font-size: 48px;
+        .payment-box .icon {
+            font-size: 40px;
             margin-bottom: 10px;
         }
 
-        .payment-info h4 {
-            color: #2e7d32;
-            margin-bottom: 10px;
+        .payment-box h4 {
+            color: #065f46;
+            margin-bottom: 8px;
         }
 
-        .payment-info p {
+        .payment-box p {
             color: #555;
-            font-size: 14px;
+            font-size: 13px;
         }
 
-        /* Cart summary */
+        /* Cart items */
         .cart-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 12px 0;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid #eaeaea;
         }
 
         .cart-item:last-child {
             border-bottom: none;
         }
 
-        .cart-item-info {
-            flex: 1;
-        }
-
-        .cart-item-name {
+        .item-name {
             font-weight: 500;
-            margin-bottom: 5px;
+            font-size: 14px;
         }
 
-        .cart-item-price {
+        .item-price {
             font-size: 12px;
             color: #888;
+            margin-top: 4px;
         }
 
-        .cart-item-quantity {
+        .item-quantity {
             color: #666;
-            margin: 0 15px;
+            font-size: 14px;
         }
 
-        .cart-item-total {
-            font-weight: bold;
-            color: #667eea;
+        .item-total {
+            font-weight: 600;
+            color: #2563eb;
         }
 
         .order-total {
             margin-top: 20px;
-            padding-top: 20px;
-            border-top: 2px solid #e9ecef;
+            padding-top: 15px;
+            border-top: 2px solid #eaeaea;
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            font-size: 20px;
-            font-weight: bold;
+            font-size: 18px;
+            font-weight: 700;
         }
 
         .order-total span:last-child {
-            color: #667eea;
-            font-size: 24px;
+            color: #2563eb;
+            font-size: 22px;
         }
 
         .btn-submit {
             width: 100%;
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            background: #2563eb;
             color: white;
             border: none;
-            padding: 15px;
-            font-size: 18px;
-            font-weight: bold;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
             border-radius: 8px;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: all 0.2s;
             margin-top: 20px;
         }
 
         .btn-submit:hover {
-            transform: translateY(-2px);
+            background: #1e40af;
+            transform: translateY(-1px);
         }
 
         .error-message {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 15px;
-            border-radius: 10px;
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 12px 16px;
+            border-radius: 8px;
             margin-bottom: 20px;
-            border-left: 4px solid #dc3545;
+            border-left: 3px solid #ef4444;
+            font-size: 14px;
+        }
+
+        .info-message {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-left: 3px solid #2563eb;
         }
 
         /* Footer */
         .footer {
-            background: #333;
-            color: white;
             text-align: center;
             padding: 30px;
-            margin-top: 50px;
+            color: #666;
+            font-size: 13px;
+            border-top: 1px solid #eaeaea;
+            margin-top: 40px;
+        }
+
+        hr {
+            margin: 15px 0;
+            border: none;
+            border-top: 1px solid #eaeaea;
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <div class="header-content">
-            <div class="logo">
-                <h1>Ma Boutique</h1>
-                <p>Qualité et satisfaction garanties</p>
-            </div>
-            <a href="panier.php" class="back-btn">← Retour au panier</a>
-            <div class="user-info">
-                <span>👋 <?php echo htmlspecialchars($_SESSION['client_nom']); ?></span>
+        <div class="container">
+            <div class="header-inner">
+                <div class="logo">
+                    <a href="index.php">Ma<span>Boutique</span></a>
+                </div>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <a href="panier.php" class="back-btn">← Panier</a>
+                    <a href="profil.php" class="user-name">
+                        <?php echo htmlspecialchars($_SESSION['client_nom']); ?>
+                    </a>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="main-content">
+    <div class="container main-content">
         <?php if($success): ?>
-            <div class="success-container">
+            <div class="success-card">
                 <div class="success-icon">✅</div>
                 <h2>Commande confirmée !</h2>
-                <p>Merci pour votre commande. Vous allez recevoir un email de confirmation.</p>
+                <p>Merci pour votre commande</p>
                 <div class="order-number">
-                    N° de commande : #<?php echo str_pad($commande_id, 8, '0', STR_PAD_LEFT); ?>
+                    #<?php echo str_pad($commande_id, 8, '0', STR_PAD_LEFT); ?>
                 </div>
                 <div class="delivery-address">
-                    <h4>📍 Adresse de livraison</h4>
+                    <h4>📍 Livraison</h4>
                     <p><?php echo nl2br(htmlspecialchars($adresse_livraison_saved)); ?></p>
                 </div>
-                <p>Vous payez à la livraison : <strong><?php echo number_format($prix_total, 0, ',', ' '); ?> DH</strong></p>
-                <a href="mes_commandes.php" class="btn-orders">📦 Voir mes commandes</a>
-                <a href="index.php" style="display: inline-block; margin-top: 20px; margin-left: 15px; color: #667eea;">Continuer mes achats →</a>
+                <p>Paiement à la livraison : <strong><?php echo number_format($prix_total, 0, ',', ' '); ?> DH</strong></p>
+                <a href="mes_commandes.php" class="btn-orders">📦 Mes commandes</a>
+                <a href="index.php" class="btn-continue">← Continuer</a>
             </div>
         <?php else: ?>
             <?php if($error): ?>
-                <div class="error-message">❌ <?php echo htmlspecialchars($error); ?></div>
+                <div class="error-message">
+                    ❌ <?php echo htmlspecialchars($error); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if(empty($user_adresse)): ?>
+                <div class="info-message">
+                    📝 <strong>Informations manquantes :</strong> Veuillez renseigner votre adresse de livraison.
+                </div>
             <?php endif; ?>
 
             <form method="POST" action="">
-                <div class="order-container">
-                    <!-- Formulaire de livraison -->
-                    <div class="order-section">
-                        <div class="section-header">
-                            <h3>📍 Adresse de livraison</h3>
+                <div class="order-grid">
+                    <!-- Livraison -->
+                    <div class="order-card">
+                        <div class="card-header">
+                            <h3>📍 Livraison</h3>
                         </div>
-                        <div class="section-body">
+                        <div class="card-body">
                             <div class="form-group">
-                                <label>Nom complet</label>
-                                <input type="text" value="<?php echo htmlspecialchars($_SESSION['client_nom']); ?>" disabled style="background: #f8f9fa;">
+                                <label>Nom</label>
+                                <input type="text" value="<?php echo htmlspecialchars($_SESSION['client_nom']); ?>" disabled>
                             </div>
                             <div class="form-group">
                                 <label>Téléphone</label>
-                                <input type="text" value="<?php echo htmlspecialchars($_SESSION['client_telephone']); ?>" disabled style="background: #f8f9fa;">
+                                <input type="text" value="<?php echo htmlspecialchars($_SESSION['client_telephone']); ?>" disabled>
                             </div>
                             <div class="form-group">
-                                <label>Adresse de livraison <span class="required">*</span></label>
-                                <textarea name="adresse_livraison" required placeholder="Votre adresse complète... (numéro, rue, code postal, ville)"></textarea>
-                                <small style="color: #666; font-size: 12px;">Exemple: 15 Rue Mohammed V, 20000 Casablanca</small>
+                                <label>Adresse <span class="required">*</span></label>
+                                <textarea name="adresse_livraison" required placeholder="Votre adresse complète..." <?php echo !empty($user_adresse) ? '' : 'autofocus'; ?>><?php echo htmlspecialchars($user_adresse); ?></textarea>
+
+                                <?php if(!empty($user_adresse)): ?>
+                                    <small style="color: #10b981; display: block; margin-top: 5px;">✓ Adresse préremplie depuis votre profil</small>
+                                <?php endif; ?>
                             </div>
                             <div class="form-group">
                                 <label>Notes (optionnel)</label>
-                                <textarea name="notes" placeholder="Instructions de livraison, code d'accès, étage, etc."></textarea>
+                                <textarea name="notes" placeholder="Instructions de livraison..."></textarea>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Paiement et récapitulatif -->
-                    <div class="order-section">
-                        <div class="section-header">
-                            <h3>💳 Mode de paiement</h3>
+                    <!-- Paiement & Récap -->
+                    <div class="order-card">
+                        <div class="card-header">
+                            <h3>💳 Paiement</h3>
                         </div>
-                        <div class="section-body">
-                            <div class="payment-info">
+                        <div class="card-body">
+                            <div class="payment-box">
                                 <div class="icon">🚚</div>
                                 <h4>Paiement à la livraison</h4>
-                                <p>Vous payez directement lors de la réception de votre commande</p>
-                                <p style="margin-top: 10px; font-weight: bold;">Espèces ou carte bancaire acceptées</p>
+                                <p>Espèces ou carte bancaire</p>
                             </div>
                         </div>
 
-                        <div class="section-header" style="margin-top: 20px;">
-                            <h3>🛒 Récapitulatif de la commande</h3>
+                        <div class="card-header">
+                            <h3>🛒 Récapitulatif</h3>
                         </div>
-                        <div class="section-body">
+                        <div class="card-body">
                             <?php 
                             $total = 0;
                             foreach($_SESSION['panier'] as $id => $quantite):
@@ -513,23 +641,23 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
                                     $total += $sous_total;
                             ?>
                                 <div class="cart-item">
-                                    <div class="cart-item-info">
-                                        <div class="cart-item-name"><?php echo htmlspecialchars($produit['nom']); ?></div>
-                                        <div class="cart-item-price"><?php echo number_format($produit['prix'], 0, ',', ' '); ?> DH</div>
+                                    <div>
+                                        <div class="item-name"><?php echo htmlspecialchars($produit['nom']); ?></div>
+                                        <div class="item-price"><?php echo number_format($produit['prix'], 0, ',', ' '); ?> DH</div>
                                     </div>
-                                    <div class="cart-item-quantity">x<?php echo $quantite; ?></div>
-                                    <div class="cart-item-total"><?php echo number_format($sous_total, 0, ',', ' '); ?> DH</div>
+                                    <div class="item-quantity">x<?php echo $quantite; ?></div>
+                                    <div class="item-total"><?php echo number_format($sous_total, 0, ',', ' '); ?> DH</div>
                                 </div>
                             <?php 
                                 endif;
                             endforeach; 
                             ?>
                             <div class="order-total">
-                                <span>Total à payer à la livraison</span>
+                                <span>Total</span>
                                 <span><?php echo number_format($total, 0, ',', ' '); ?> DH</span>
                             </div>
                             
-                            <button type="submit" class="btn-submit">✅ Confirmer ma commande</button>
+                            <button type="submit" class="btn-submit">Confirmer la commande</button>
                         </div>
                     </div>
                 </div>
@@ -538,8 +666,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
     </div>
 
     <div class="footer">
-        <p>&copy; <?php echo date('Y'); ?> Ma Boutique - Tous droits réservés</p>
-        <p style="font-size: 12px; margin-top: 10px;">Paiement sécurisé à la livraison</p>
+        <p>&copy; <?php echo date('Y'); ?> Ma Boutique</p>
     </div>
 </body>
 </html>
